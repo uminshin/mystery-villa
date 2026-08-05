@@ -15,6 +15,10 @@ import game_state as gs
 from gm import GMError, call_gm
 
 ART_DIR = Path(__file__).parent / "assets" / "locations"
+AUDIO_DIR = Path(__file__).parent / "assets" / "audio"
+
+# 행동별 효과음. 없는 파일은 조용히 건너뛴다.
+ACTION_SOUNDS = {"이동": "move.wav", "조사": "search.wav", "심문": "interrogate.wav"}
 
 st.set_page_config(page_title="그날 밤, 별장에서", page_icon="🕯️")
 
@@ -38,8 +42,11 @@ ACTION_ICONS = {
 
 @st.cache_data(show_spinner=False)
 def load_location_art(location: str) -> str | None:
-    """장소 삽화 SVG를 읽어 온다. 파일이 없으면 None(삽화 없이 진행)."""
-    slug = gs.LOCATION_ART.get(location)
+    """장소 삽화 SVG를 읽어 온다. 파일이 없으면 None(삽화 없이 진행).
+
+    location이 "__map__"이면 평면도를 읽는다.
+    """
+    slug = "map" if location == "__map__" else gs.LOCATION_ART.get(location)
     if not slug:
         return None
     path = ART_DIR / f"{slug}.svg"
@@ -54,6 +61,37 @@ def _art_data_uri(location: str) -> str | None:
         return None
     encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
     return f"data:image/svg+xml;base64,{encoded}"
+
+
+def render_map(location: str) -> None:
+    """별장 평면도. 지금 있는 방을 강조색 테두리로 표시한다.
+
+    배경 이미지로 넣으면 외부 CSS가 SVG 내부에 닿지 않으므로,
+    SVG 문서 안에 <style>을 끼워 넣어서 현재 방만 강조한다.
+    """
+    svg = load_location_art("__map__")
+    if svg is None:
+        return
+    slug = gs.LOCATION_ART.get(location)
+    if slug:
+        svg = svg.replace(
+            "</svg>",
+            f"<style>#room-{slug}{{fill:#241f1a;stroke:{HIGHLIGHT};stroke-width:3}}</style></svg>",
+        )
+    encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    st.html(
+        f"""<style>
+        .villa-map {{
+            width: 100%;
+            aspect-ratio: 420 / 300;
+            background-image: url('data:image/svg+xml;base64,{encoded}');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }}
+        </style>
+        <div class="villa-map"></div>"""
+    )
 
 
 def render_location_art(location: str) -> None:
@@ -102,6 +140,46 @@ def inject_clue_background(location: str) -> None:
     )
 
 
+@st.cache_data(show_spinner=False)
+def load_audio(name: str) -> bytes | None:
+    path = AUDIO_DIR / name
+    return path.read_bytes() if path.exists() else None
+
+
+def render_bgm() -> None:
+    """폭우 보량음. 게임이 시작된 뒤에만 재생한다.
+
+    브라우저는 사용자 조작 전에는 자동재생을 막는다. 메인 화면의
+    '수사를 시작한다'를 누른 뒤에 이 요소가 처음 등장하므로 그 제약을 넘긴다.
+    """
+    if not st.session_state.get("sound_on"):
+        return
+    data = load_audio("rain.wav")
+    if data is None:
+        return
+    # 컨테이너 키를 고정해 두면 턴이 바뀌어도 같은 요소로 취급되어
+    # 재생이 처음부터 다시 시작되지 않는다.
+    with st.container(key="bgm"):
+        st.audio(data, format="audio/wav", loop=True, autoplay=True)
+
+
+def render_action_sound() -> None:
+    """직전 행동의 효과음을 한 번 재생한다.
+
+    키에 턴과 행동을 넣어, 행동이 바뀔 때만 새 요소가 만들어지며 재생된다.
+    """
+    if not st.session_state.get("sound_on"):
+        return
+    last = st.session_state.get("last_sound")
+    if not last:
+        return
+    data = load_audio(ACTION_SOUNDS.get(last["action"], ""))
+    if data is None:
+        return
+    with st.container(key=f"sfx-{last['seq']}"):
+        st.audio(data, format="audio/wav", autoplay=True)
+
+
 def inject_css() -> None:
     """나레이션 본문을 키우고 강조 요소에 색을 넣는다.
 
@@ -120,16 +198,10 @@ def inject_css() -> None:
         }}
 
 
-        /* 단서 카드: 앞으로 튀어나오며 등장하고 강조색 테두리가 두 번 번쩍인다 */
+        /* 단서 카드: 글자는 움직이지 않는다. 테두리 글로우만 두 번 번쩍인다. */
         .st-key-clue-card {{
             border-color: {HIGHLIGHT} !important;
-            animation: clue-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2),
-                       clue-glow 1.0s ease-in-out 0.25s 2;
-        }}
-        @keyframes clue-in {{
-            0%   {{ transform: scale(0.93); opacity: 0; }}
-            60%  {{ transform: scale(1.025); opacity: 1; }}
-            100% {{ transform: scale(1); opacity: 1; }}
+            animation: clue-glow 1.0s ease-in-out 0.15s 2;
         }}
         @keyframes clue-glow {{
             0%, 100% {{ box-shadow: 0 0 0 0 rgba(242, 193, 78, 0); }}
@@ -191,7 +263,13 @@ def start_new_game() -> None:
     st.session_state.ending = None
     st.session_state.pending_input = None
     st.session_state.log = []
-    st.session_state.notes = ""
+    # 용의자별로 메모를 나눈다. 알리바이를 인물 단위로 적어야 대조가 된다.
+    for key in gs.SUSPECTS:
+        st.session_state[f"notes_{key}"] = ""
+    st.session_state.last_sound = None
+    st.session_state.sound_seq = 0
+    # sound_on은 위젯 키라서 여기서 건드리지 않는다. 위젯이 이미 그려진 뒤에
+    # 대입하면 Streamlit이 예외를 던지고, 소리 설정은 판을 넘겨 유지되는 편이 낫다.
 
 
 def request_gm(player_input: str, narration_slot=None) -> None:
@@ -243,6 +321,12 @@ def take_action(choice: dict[str, str], narration_slot=None) -> None:
         gs.advance_turn(state)
     st.session_state.found = found
 
+    st.session_state.sound_seq += 1
+    st.session_state.last_sound = {
+        "action": choice["action"],
+        "seq": st.session_state.sound_seq,
+    }
+
     outcome = f"발견한 단서: {found['name']} — {found['detail']}" if found else "새로 발견한 단서: 없음"
     cost = "1턴 소모" if spent else "턴 소모 없음(이동)"
     request_gm(
@@ -266,8 +350,8 @@ def take_action(choice: dict[str, str], narration_slot=None) -> None:
             }
         )
 
-    if gs.must_accuse(state):
-        st.session_state.phase = "accuse"
+    # 턴이 끝나도 화면을 자동으로 넘기지 않는다. 마지막 나레이션을 읽고
+    # 메모를 정리할 시간을 준 뒤, 플레이어가 직접 지목 화면으로 들어가야 한다.
 
 
 def render_case_file() -> None:
@@ -277,11 +361,12 @@ def render_case_file() -> None:
     한 화면에서 오갈 수 있게 했다.
     """
     state = st.session_state.state
-    suspects_tab, notes_tab, clues_tab = st.tabs(
+    # 순서: 용의자 > 단서 > 탐정 노트. 메모가 길어질 수 있어 노트를 맨 뒤로 둔다.
+    suspects_tab, clues_tab, notes_tab = st.tabs(
         [
             "용의자",
-            "탐정 노트",
             f"단서 {len(state['clues_found'])} / {len(gs.CLUES)}",
+            "탐정 노트",
         ]
     )
 
@@ -331,19 +416,14 @@ def render_case_file() -> None:
         else:
             st.caption("아직 기록이 없습니다.")
 
-        st.text_area(
-            "메모",
-            key="notes",
-            height=160,
-            placeholder=(
-                "예)\n"
-                "23:20 비가 그쳤다\n"
-                "A: 23:10까지 거실, 이후 알리바이 없음\n"
-                "B: 금고실 주장 — 퇴장 기록 없음\n"
-                "C: 23:00 취침 주장"
-            ),
-            help="자유롭게 적어두세요. 게임을 다시 시작하지 않는 한 유지됩니다.",
-        )
+        st.caption("인물별 메모")
+        for key, info in gs.SUSPECTS.items():
+            st.text_area(
+                info["name"],
+                key=f"notes_{key}",
+                height=110,
+                placeholder=f"{info['short']}의 진술과 모순을 적어두세요.\n예) 23:00 취침 주장",
+            )
 
     with clues_tab:
         found_this_turn = st.session_state.found is not None
@@ -366,30 +446,96 @@ def render_case_file() -> None:
 
 
 def render_start() -> None:
-    """게임 진입 전 메인 화면. 제목은 여기서만 크게 보여준다."""
+    """사건 브리핑. 추리에 필요한 전제는 전부 여기서 밝힌다.
+
+    플레이어가 모르는 정보(인물의 성별·관계 등)를 전제로 단서를 해석하게 하면
+    안 되므로, 인물 정보를 처음부터 표로 공개한다.
+    """
     st.markdown("# 🕯️ 그날 밤, 별장에서")
-    st.markdown(
-        ":gray[폭풍으로 뱃길이 끊긴 외딴 별장. 어젯밤 주인이 서재에서 살해당했다.]"
-    )
-    st.write("")
+    st.markdown(":gray[사건에 들어가며]")
+    st.divider()
 
     with st.container(key="narration"):
         st.markdown(
-            "당신은 이 별장의 손님 중 한 명이다. 아침 배가 들어오기 전까지 "
-            f"**{gs.MAX_TURNS}턴** 안에 진범을 찾아내야 한다. "
-            "용의자는 셋, 별장에는 여섯 개의 방이 있다."
+            "폭풍으로 뱃길이 끊긴 외딴 섬의 별장. 당신은 이곳의 손님이 아니라, "
+            "의뢰를 받고 건너온 **탐정**이다. 어젯밤 별장의 주인이 서재에서 숨졌고, "
+            "배가 다시 들어오는 아침까지 섬을 나갈 수 있는 사람은 아무도 없다. "
+            "지금 이 건물 안에 범인이 있다."
         )
 
     st.write("")
-    with st.container(border=True):
-        st.markdown(
-            f"**규칙**  \n"
-            f":gray[· 장소 이동은 턴을 소모하지 않는다]  \n"
-            f":gray[· 조사와 심문은 1턴을 쓴다]  \n"
-            f":gray[· {gs.MAX_TURNS}턴이 끝나면 반드시 한 명을 지목해야 한다]"
-        )
+    left, right = st.columns([1, 1], gap="medium")
+
+    with left:
+        st.markdown("###### 피해자")
+        with st.container(border=True):
+            st.markdown(f"**{gs.VICTIM}**")
+            st.markdown(
+                f":gray[사인] {gs.CAUSE_OF_DEATH}  \n"
+                f":gray[사망 추정] **{gs.TIME_OF_DEATH}**  \n"
+                f":gray[발견] {gs.DISCOVERY}"
+            )
+
+    with right:
+        st.markdown("###### 그날 밤의 시각")
+        with st.container(border=True):
+            st.markdown(
+                "  \n".join(
+                    f"**{when}** · {what}" if when == gs.TIME_OF_DEATH
+                    else f":gray[{when}] {what}"
+                    for when, what in gs.TIMELINE
+                )
+            )
 
     st.write("")
+    st.markdown("###### 별장에 남은 세 사람")
+    st.dataframe(
+        [
+            {
+                "인물": info["name"],
+                "성별": info["gender"],
+                "나이": info["age"],
+                "피해자와의 관계": info["relation"],
+            }
+            for info in gs.SUSPECTS.values()
+        ],
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "인물": st.column_config.TextColumn(width="small"),
+            "성별": st.column_config.TextColumn(width="small"),
+            "나이": st.column_config.TextColumn(width="small"),
+            "피해자와의 관계": st.column_config.TextColumn(width="large"),
+        },
+    )
+
+    st.write("")
+    st.markdown("###### 수사 규칙")
+    rule_left, rule_right = st.columns([1, 1], gap="medium")
+    with rule_left:
+        with st.container(border=True):
+            st.markdown(
+                "**턴**  \n"
+                f":gray[· 주어진 시간은 **{gs.MAX_TURNS}턴**]  \n"
+                ":gray[· 장소 이동은 턴을 쓰지 않는다]  \n"
+                ":gray[· 조사와 심문은 1턴]"
+            )
+    with rule_right:
+        with st.container(border=True):
+            st.markdown(
+                "**지목**  \n"
+                ":gray[· 언제든 지목할 수 있다]  \n"
+                f":gray[· 결정적 단서 **{gs.REQUIRED_CLUES}개** 이상이 필요하다]  \n"
+                ":gray[· 심증만으로는 사건이 미제로 남는다]"
+            )
+
+    st.write("")
+    st.toggle(
+        "소리 켜기",
+        key="sound_on",
+        help="폭우 보량음과 행동 효과음. 게임 중에도 끌 수 있습니다.",
+    )
+
     if st.button(
         "수사를 시작한다",
         type="primary",
@@ -423,67 +569,89 @@ def render_play() -> None:
     if gm is None:
         return
 
-    # 제목을 없앤 자리를 장소가 채운다. 지금 어디에 있는지가 화면의 머리글이다.
-    with st.container(key="location"):
-        st.markdown(f"# {state['location']}")
-    render_location_art(state["location"])
+    # 화면이 넓으면 좌우 2단, 좁아지면 Streamlit이 알아서 위아래로 쌓는다.
+    # 수사 기록을 스크롤 없이 옆에서 보게 하려는 배치다.
+    stage, panel = st.columns([3, 2], gap="medium")
 
-    remaining = state["max_turns"] - state["turn"]
-    with st.container(key="turns-low" if remaining <= 3 else "turns"):
-        st.caption(
-            f"남은 턴 {remaining}" + ("  · 시간이 얼마 없다" if remaining <= 3 else "")
-        )
+    with panel:
+        render_map(state["location"])
+        render_case_file()
+        st.toggle("소리 켜기", key="sound_on")
 
-    # 이 자리에 다음 턴 나레이션이 스트리밍으로 덮어쓰인다.
-    with st.container(key="narration"):
-        narration_slot = st.empty()
-        narration_slot.markdown(gm["narration"])
+    with stage:
+        # 제목을 없앤 자리를 장소가 채운다. 지금 어디에 있는지가 화면의 머리글이다.
+        with st.container(key="location"):
+            st.markdown(f"# {state['location']}")
+        render_location_art(state["location"])
 
-    if st.session_state.found:
-        found = st.session_state.found
-        inject_clue_background(found["location"])
-        with st.container(border=True, key="clue-card"):
-            st.badge("단서 획득", icon=":material/bookmark:", color="orange")
-            st.markdown(f"**{found['name']}**")
-            st.caption(found["detail"])
+        remaining = state["max_turns"] - state["turn"]
+        with st.container(key="turns-low" if remaining <= 3 else "turns"):
+            st.caption(
+                f"남은 턴 {remaining}"
+                + ("  · 시간이 얼마 없다" if 0 < remaining <= 3 else "")
+            )
 
-    # 심증만 앞서갈 때 물증을 챙기라고 알린다. 진범 정보를 보지 않으므로
-    # 이 경고로 범인을 역산할 수 없다 (A/B/C에 같은 규칙이 걸린다).
-    for key, count in gs.weak_evidence_warnings(state):
-        st.warning(
-            f"**{gs.SUSPECTS[key]['name']}** 쪽으로 의심이 쏠려 있지만, "
-            f"그를 가리키는 물증은 {count}개입니다. "
-            f"지목이 받아들여지려면 결정적 단서 {gs.REQUIRED_CLUES}개가 필요합니다.",
-            icon=":material/warning:",
-        )
+        # 이 자리에 다음 턴 나레이션이 스트리밍으로 덮어쓰인다.
+        with st.container(key="narration"):
+            narration_slot = st.empty()
+            narration_slot.markdown(gm["narration"])
 
-    st.divider()
-    st.caption("이동은 턴을 소모하지 않습니다. 조사와 심문만 1턴.")
+        if st.session_state.found:
+            found = st.session_state.found
+            inject_clue_background(found["location"])
+            with st.container(border=True, key="clue-card"):
+                st.badge("단서 획득", icon=":material/bookmark:", color="orange")
+                st.markdown(f"**{found['name']}**")
+                st.caption(found["detail"])
 
-    for index, choice in enumerate(gm["choices"]):
-        if st.button(
-            choice["label"],
-            icon=ACTION_ICONS.get(choice["action"]),
-            key=f"choice-{state['turn']}-{index}-{choice['action']}-{choice['target']}",
-            width="stretch",
-        ):
-            narration_slot.markdown(":gray[…]")
-            take_action(choice, narration_slot=narration_slot)
-            st.rerun()
+        # 심증만 앞서갈 때 물증을 챙기라고 알린다. 진범 정보를 보지 않으므로
+        # 이 경고로 범인을 역산할 수 없다 (A/B/C에 같은 규칙이 걸린다).
+        for key, count in gs.weak_evidence_warnings(state):
+            st.warning(
+                f"**{gs.SUSPECTS[key]['name']}** 쪽으로 의심이 쏠려 있지만, "
+                f"그를 가리키는 물증은 {count}개입니다. "
+                f"지목이 받아들여지려면 결정적 단서 {gs.REQUIRED_CLUES}개가 필요합니다.",
+                icon=":material/warning:",
+            )
 
-    # 턴이 남았어도 눈치챘으면 바로 지목할 수 있게 한다.
-    st.write("")
+        st.divider()
+
+        if gs.must_accuse(state):
+            # 시간이 끝났다. 화면을 강제로 넘기지 않고, 기록을 정리한 뒤
+            # 직접 들어가도록 버튼만 남긴다.
+            st.info(
+                "주어진 시간이 끝났습니다. 기록을 정리한 뒤 지목 화면으로 넘어가세요.",
+                icon=":material/hourglass_bottom:",
+            )
+        else:
+            st.caption("이동은 턴을 소모하지 않습니다. 조사와 심문만 1턴.")
+            for index, choice in enumerate(gm["choices"]):
+                if st.button(
+                    choice["label"],
+                    icon=ACTION_ICONS.get(choice["action"]),
+                    key=f"choice-{state['turn']}-{index}-{choice['action']}-{choice['target']}",
+                    width="stretch",
+                ):
+                    narration_slot.markdown(":gray[…]")
+                    take_action(choice, narration_slot=narration_slot)
+                    st.rerun()
+
+        # 턴이 남았어도 눈치챘으면 바로 지목할 수 있게 한다.
+        st.write("")
+        _render_accuse_entry()
+
+
+def _render_accuse_entry() -> None:
+    """지목 화면으로 들어가는 버튼. 시간이 끝났으면 이게 유일한 다음 행동이다."""
+    final = gs.must_accuse(st.session_state.state)
     if st.button(
-        "지금 범인을 지목한다",
+        "범인을 지목한다" if final else "지금 범인을 지목한다",
         icon=":material/gavel:",
-        type="tertiary",
+        type="primary" if final else "tertiary",
         width="stretch",
     ):
         st.session_state.phase = "accuse"
         st.rerun()
-
-    st.divider()
-    render_case_file()
 
 
 def render_accuse() -> None:
@@ -552,9 +720,19 @@ def render_ending() -> None:
 if "state" not in st.session_state:
     start_new_game()
 
+# 위젯 키의 초기값은 위젯이 그려지기 전에 딱 한 번만 넣는다.
+st.session_state.setdefault("sound_on", True)
+
 inject_css()
 
 phase = st.session_state.phase
+
+# 오디오 요소는 컬럼 밖 고정 위치에 둔다. 위치가 흔들리면 요소가 새로 만들어져
+# 보량음이 매 턴 처음부터 다시 재생된다.
+if phase != "start":
+    render_bgm()
+    render_action_sound()
+
 if phase == "start":
     render_start()
 elif phase == "play":

@@ -1,0 +1,28 @@
+<svg viewBox="0 0 420 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="별장 평면도 — 여섯 개의 방">
+  <rect width="420" height="300" fill="#14110f"/>
+  <g stroke="#3a322a" stroke-width="2" fill="#1b1714">
+    <rect id="room-attic" x="20" y="18" width="180" height="72" rx="3"/>
+    <rect id="room-study" x="220" y="18" width="180" height="72" rx="3"/>
+    <rect id="room-living-room" x="20" y="106" width="180" height="88" rx="3"/>
+    <rect id="room-bedroom" x="220" y="106" width="180" height="88" rx="3"/>
+    <rect id="room-vault" x="20" y="210" width="180" height="72" rx="3"/>
+    <rect id="room-garden" x="220" y="210" width="180" height="72" rx="3"/>
+  </g>
+  <g stroke="#2b2521" stroke-width="2">
+    <path d="M200 54 H220 M200 150 H220 M200 246 H220"/>
+    <path d="M110 90 V106 M110 194 V210"/>
+    <path d="M310 90 V106 M310 194 V210"/>
+  </g>
+  <g fill="#e8ddc8" font-family="serif" font-size="15" text-anchor="middle" opacity="0.82">
+    <text x="110" y="60">다락방</text>
+    <text x="310" y="60">서재</text>
+    <text x="110" y="156">거실</text>
+    <text x="310" y="156">침실</text>
+    <text x="110" y="252">금고실</text>
+    <text x="310" y="252">정원</text>
+  </g>
+  <g fill="#8f2f28" opacity="0.5">
+    <circle cx="356" cy="44" r="5"/>
+  </g>
+  <text x="366" y="48" fill="#8f2f28" font-family="serif" font-size="11" opacity="0.75">현장</text>
+</svg>

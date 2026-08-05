@@ -14,11 +14,16 @@ from typing import Any, Callable, Optional
 import anthropic
 
 from game_state import (
+    CAUSE_OF_DEATH,
     CLUES,
     CULPRIT,
+    DISCOVERY,
     LOCATIONS,
     MAX_TURNS,
     SUSPECTS,
+    TIME_OF_DEATH,
+    TIMELINE,
+    VICTIM,
     costs_turn,
     state_for_prompt,
     undiscovered_clue_at,
@@ -89,9 +94,11 @@ RESPONSE_SCHEMA: dict[str, Any] = {
 
 def build_system_prompt() -> str:
     suspect_lines = "\n".join(
-        f"- {key}: {value['name']} / 동기: {value['motive']}"
+        f"- {key}: {value['name']} ({value['gender']}, {value['age']}) / "
+        f"동기: {value['motive']} / {value['relation']}"
         for key, value in SUSPECTS.items()
     )
+    timeline_lines = "\n".join(f"{when}  {what}" for when, what in TIMELINE)
     clue_lines = "\n".join(
         f"- {clue['location']}: {clue['name']} — {clue['detail']} (가리키는 인물: {clue['points_to']})"
         for clue in CLUES.values()
@@ -99,9 +106,15 @@ def build_system_prompt() -> str:
     return f"""당신은 미스터리 텍스트 어드벤처 "그날 밤, 별장에서"의 게임 마스터(GM)다.
 
 [상황]
-폭풍으로 뱃길이 끊긴 외딴 별장. 어젯밤 별장 주인이 서재에서 살해당했다.
-플레이어는 손님 중 한 명이며, 탐정 역할로 하룻밤 동안 진범을 찾아야 한다.
-총 {MAX_TURNS}턴이 주어지고, 마지막 턴이 끝나면 반드시 한 명을 지목해야 한다.
+폭풍으로 뱃길이 끊긴 외딴 섬의 별장. 어젯밤 별장 주인이 서재에서 살해당했다.
+플레이어는 손님이 아니라 **의뢰를 받고 섬에 건너온 탐정**이다. 별장에 머무는
+세 사람을 상대로 하룻밤 동안 진범을 찾아야 한다. 플레이어를 손님으로 부르지 마라.
+총 {MAX_TURNS}턴이 주어진다.
+
+피해자: {VICTIM}
+사인: {CAUSE_OF_DEATH}
+사망 추정 시각: {TIME_OF_DEATH}
+발견: {DISCOVERY}
 
 [용의자]
 {suspect_lines}
@@ -112,18 +125,17 @@ def build_system_prompt() -> str:
 [단서 배치 — 장소당 1개]
 {clue_lines}
 
-[사건 타임라인 — 심문으로 알 수 있는 공용 사실]
-22:30  저녁 식사가 끝나고 손님들이 흩어졌다.
-23:20  폭풍우가 잠시 그쳤다. (이 시각 이후에야 정원 흙에 발자국이 남을 수 있다)
-23:40  사망 추정 시각. 서재에서 둔기에 맞았다.
-00:10  비서가 시신을 발견하고 사람들을 불러모았다.
+[사건 타임라인 — 플레이어에게 이미 공개된 사실]
+{timeline_lines}
+* 23:20에 비가 그쳤으므로, 정원 흙에 발자국이 남았다면 그 시각 이후에 나간 것이다.
 
 [알리바이 표 — 심문 시 이 진술을 일관되게 유지하라]
 ■ A (배다른 형제)
   주장: 22:40~23:10 거실에서 피해자와 위스키를 마시며 유산 문제로 다퉜다. 이후 침실에서 잤다.
   검증: 다툰 사실은 본인이 순순히 인정한다. 23:10 이후를 봐준 사람은 없다 — 알리바이 없음.
   숨기는 것: 유언장이 자신에게 불리하게 고쳐진 걸 이미 알고 있었다.
-  신뢰도 70 이상: 23:30경 복도에서 여자 구두 소리를 들었다고 말한다. 누구인지는 단정하지 않는다.
+  신뢰도 70 이상: 23:30경 복도에서 조심스러운 발소리를 들었다고 말한다.
+    누구인지는 모른다고 하고, 성별이나 신발 같은 식별 정보는 절대 덧붙이지 않는다.
 
 ■ B (전 비즈니스 파트너)
   주장: 23:00~23:50 금고실에서 채무 서류를 검토했다. 혼자였다.
