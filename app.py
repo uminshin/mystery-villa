@@ -107,10 +107,12 @@ def inject_css() -> None:
 @st.cache_resource
 def get_client() -> anthropic.Anthropic:
     # ANTHROPIC_API_KEY 환경변수 또는 `ant auth login` 프로필을 자동으로 사용.
-    # 529(overloaded)/429는 SDK가 지수 백오프로 자동 재시도한다. 기본 2회로는
-    # 과부하 구간을 넘기지 못해서 올렸다. 게임 한 턴이 늦게 오는 것이
-    # 에러 화면을 보는 것보다 낫다.
-    return anthropic.Anthropic(max_retries=6, timeout=120.0)
+    #
+    # 재시도 횟수는 일부러 낮게 잡았다. 실측 기준 정상 응답은 7초 안팎인데,
+    # 과부하 구간에서 max_retries를 크게 두면 지수 백오프가 누적되어 한 턴이
+    # 몇 분씩 걸린다(그동안 화면은 멈춘 것처럼 보인다). 빨리 실패하고
+    # '다시 시도'를 누르게 하는 편이 낫다.
+    return anthropic.Anthropic(max_retries=2, timeout=60.0)
 
 
 def start_new_game() -> None:
@@ -123,18 +125,27 @@ def start_new_game() -> None:
     st.session_state.ending = None
     st.session_state.pending_input = None
     st.session_state.last_deltas = None
+    st.session_state.log = []
+    st.session_state.notes = ""
 
 
-def request_gm(player_input: str) -> None:
+def request_gm(player_input: str, narration_slot=None) -> None:
     # 실패 시 이 프롬프트를 그대로 재전송해야 한다. call_gm은 성공할 때만 히스토리를
     # 돌려주므로 히스토리에서 되짚을 수 없다(그러면 오프닝이 재전송된다).
     st.session_state.pending_input = player_input
+
+    on_narration = None
+    if narration_slot is not None:
+        # 도착하는 대로 같은 자리에 덮어써서 타이핑되는 것처럼 보이게 한다.
+        on_narration = lambda text: narration_slot.markdown(text)  # noqa: E731
+
     try:
         gm, history = call_gm(
             get_client(),
             st.session_state.history,
             st.session_state.state,
             player_input,
+            on_narration=on_narration,
         )
     except GMError as exc:
         st.session_state.error = str(exc)
@@ -176,7 +187,7 @@ def request_gm(player_input: str) -> None:
     }
 
 
-def take_action(choice: dict[str, str]) -> None:
+def take_action(choice: dict[str, str], narration_slot=None) -> None:
     state = st.session_state.state
     found = gs.resolve_action(state, choice)
     spent = gs.costs_turn(choice["action"])
@@ -190,24 +201,45 @@ def take_action(choice: dict[str, str]) -> None:
         f"[턴 {state['turn']}/{state['max_turns']}] 플레이어 행동: {choice['label']} "
         f"(action={choice['action']}, target={choice['target'] or '현재 장소'}, {cost})\n"
         f"판정 결과: {outcome}\n"
-        f"이 결과를 반영한 나레이션과 다음 선택지 3개를 제시하라."
+        f"이 결과를 반영한 나레이션과 다음 선택지 3개를 제시하라.",
+        narration_slot=narration_slot,
     )
+
+    # 탐정 노트에 자동으로 한 줄 남긴다. 플레이어가 직접 적는 메모와 별개로,
+    # "몇 턴에 어디서 무엇을 했는지"는 기계가 기억해 주는 편이 낫다.
+    if st.session_state.error is None:
+        st.session_state.log.append(
+            {
+                "turn": state["turn"],
+                "location": state["location"],
+                "action": choice["action"],
+                "label": choice["label"],
+                "found": found["name"] if found else None,
+            }
+        )
 
     if gs.must_accuse(state):
         st.session_state.phase = "accuse"
 
 
-def render_sidebar() -> None:
+def render_case_file() -> None:
+    """수사 기록 — 사이드바를 없애고 본문 아래 탭으로 옮겼다.
+
+    용의자 수치 / 탐정 노트 / 단서 목록을 나란히 두어, 진술의 앞뒤를 맞춰볼 때
+    한 화면에서 오갈 수 있게 했다.
+    """
     state = st.session_state.state
-    with st.sidebar:
-        st.subheader("수사 기록")
-        st.metric("턴", f"{state['turn']} / {state['max_turns']}")
+    suspects_tab, notes_tab, clues_tab = st.tabs(
+        [
+            "용의자",
+            "탐정 노트",
+            f"단서 {len(state['clues_found'])} / {len(gs.CLUES)}",
+        ]
+    )
 
-        st.divider()
-
+    with suspects_tab:
         # progress bar 6개를 용의자 1행씩 3행 표로 묶었다. 같은 인물의 의심도와
         # 신뢰도를 나란히 봐야 심문 판단이 되는데, 이전 배치는 두 값이 떨어져 있었다.
-        st.caption("용의자")
         st.dataframe(
             [
                 {
@@ -245,6 +277,40 @@ def render_sidebar() -> None:
             with st.container(key=f"delta-flash-{state['turn']}"):
                 st.markdown(" · ".join(chips))
 
+    with notes_tab:
+        # 자동 기록 + 직접 메모. 알리바이의 앞뒤를 맞추려면 "누가 몇 시에 뭘 했다"를
+        # 어딘가에 적어둬야 하는데, 그걸 게임 밖 종이에 적게 만들 이유가 없다.
+        if st.session_state.log:
+            rows = []
+            for entry in st.session_state.log:
+                rows.append(
+                    {
+                        "턴": entry["turn"],
+                        "장소": entry["location"],
+                        "행동": entry["action"],
+                        "내용": entry["label"],
+                        "단서": entry["found"] or "",
+                    }
+                )
+            st.dataframe(rows, hide_index=True, width="stretch")
+        else:
+            st.caption("아직 기록이 없습니다.")
+
+        st.text_area(
+            "메모",
+            key="notes",
+            height=160,
+            placeholder=(
+                "예)\n"
+                "23:20 비가 그쳤다\n"
+                "A: 23:10까지 거실, 이후 알리바이 없음\n"
+                "B: 금고실 주장 — 퇴장 기록 없음\n"
+                "C: 23:00 취침 주장"
+            ),
+            help="자유롭게 적어두세요. 게임을 다시 시작하지 않는 한 유지됩니다.",
+        )
+
+    with clues_tab:
         found_this_turn = st.session_state.found is not None
         count_key = (
             f"clue-count-hit-{state['turn']}" if found_this_turn else "clue-count"
@@ -253,22 +319,15 @@ def render_sidebar() -> None:
             st.caption(f"단서 {len(state['clues_found'])} / {len(gs.CLUES)}")
 
         if state["clues_found"]:
-            lines = []
             for index, cid in enumerate(state["clues_found"]):
                 clue = gs.CLUES[cid]
                 newest = found_this_turn and index == len(state["clues_found"]) - 1
-                mark = " :orange[**← 방금**]" if newest else ""
-                lines.append(
-                    f"- **{clue['name']}**{mark}  \n  :gray[{clue['location']}]"
-                )
-            st.markdown("\n".join(lines))
+                with st.container(border=True):
+                    mark = " :orange[**← 방금**]" if newest else ""
+                    st.markdown(f"**{clue['name']}**{mark}")
+                    st.caption(f"{clue['location']} · {clue['detail']}")
         else:
             st.caption("아직 없음")
-
-        st.divider()
-        if st.button("처음부터 다시", icon=":material/restart_alt:", width="stretch"):
-            start_new_game()
-            st.rerun()
 
 
 def render_start() -> None:
@@ -339,8 +398,10 @@ def render_play() -> None:
             f"남은 턴 {remaining}" + ("  · 시간이 얼마 없다" if remaining <= 3 else "")
         )
 
+    # 이 자리에 다음 턴 나레이션이 스트리밍으로 덮어쓰인다.
     with st.container(key="narration"):
-        st.markdown(gm["narration"])
+        narration_slot = st.empty()
+        narration_slot.markdown(gm["narration"])
 
     if st.session_state.found:
         found = st.session_state.found
@@ -369,17 +430,43 @@ def render_play() -> None:
             key=f"choice-{state['turn']}-{index}-{choice['action']}-{choice['target']}",
             width="stretch",
         ):
-            with st.spinner("…"):
-                take_action(choice)
+            narration_slot.markdown(":gray[…]")
+            take_action(choice, narration_slot=narration_slot)
             st.rerun()
+
+    # 턴이 남았어도 눈치챘으면 바로 지목할 수 있게 한다.
+    st.write("")
+    if st.button(
+        "지금 범인을 지목한다",
+        icon=":material/gavel:",
+        type="tertiary",
+        width="stretch",
+    ):
+        st.session_state.phase = "accuse"
+        st.rerun()
+
+    st.divider()
+    render_case_file()
 
 
 def render_accuse() -> None:
-    st.markdown("#### 지목")
-    st.write(
-        "밤이 끝났다. 폭풍이 잦아들고 아침 배가 들어온다. "
-        "지금 한 명을 지목해야 한다."
-    )
+    state = st.session_state.state
+    early = not gs.must_accuse(state)
+
+    st.markdown("# 지목")
+    if early:
+        st.write(
+            f"아직 {state['max_turns'] - state['turn']}턴이 남아 있다. "
+            "그래도 지금 결론을 내리겠다면, 지목한 순간 밤은 끝난다."
+        )
+        if st.button("아직 아니다 — 수사를 계속한다", icon=":material/arrow_back:"):
+            st.session_state.phase = "play"
+            st.rerun()
+    else:
+        st.write(
+            "밤이 끝났다. 폭풍이 잦아들고 아침 배가 들어온다. "
+            "지금 한 명을 지목해야 한다."
+        )
 
     # 마지막 턴에 GM 호출이 실패하면 그 턴의 나레이션 없이 여기로 넘어온다.
     # 조용히 삼키면 플레이어는 이유를 모르므로 남은 단서 기준으로 안내한다.
@@ -413,19 +500,22 @@ def render_accuse() -> None:
 
 def render_ending() -> None:
     ending = st.session_state.ending
-    st.markdown(f"#### {ending['title']}")
-    st.write(ending["text"])
+    st.markdown(f"# {ending['title']}")
+    with st.container(key="narration"):
+        st.markdown(ending["text"])
     st.divider()
-    if st.button("다시 플레이", width="stretch"):
+    if st.button(
+        "다시 플레이", icon=":material/restart_alt:", type="primary", width="stretch"
+    ):
         start_new_game()
         st.rerun()
+    render_case_file()
 
 
 if "state" not in st.session_state:
     start_new_game()
 
 inject_css()
-render_sidebar()
 
 phase = st.session_state.phase
 if phase == "start":

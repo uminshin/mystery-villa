@@ -8,7 +8,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+import re
+from typing import Any, Callable, Optional
 
 import anthropic
 
@@ -25,7 +26,6 @@ from game_state import (
 
 MODEL = "claude-opus-5"
 MAX_TOKENS = 8000  # thinking + 응답 텍스트 합산 상한
-_FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
 class GMError(RuntimeError):
@@ -185,30 +185,22 @@ def build_system_prompt() -> str:
 """
 
 
-_fallback_supported = True
+_NARRATION_RE = re.compile(r'"narration"\s*:\s*"((?:[^"\\]|\\.)*)')
 
 
-def _create_message(client: anthropic.Anthropic, **kwargs: Any):
-    """서버측 refusal fallback을 우선 시도하고, 미지원 환경이면 일반 호출로 내려간다.
+def _partial_narration(buffer: str) -> str | None:
+    """아직 끝나지 않은 JSON에서 narration 문자열만 뽑아낸다.
 
-    한 번 미지원으로 판정되면 이후 턴에서는 곧바로 일반 호출을 쓴다.
-    인증 실패 같은 다른 TypeError는 삼키지 않고 그대로 올린다.
+    스키마 순서상 narration이 첫 필드로 오므로, 도착하는 즉시 화면에 찍을 수 있다.
+    이스케이프가 잘린 순간에는 None을 돌려주고 다음 조각을 기다린다.
     """
-    global _fallback_supported
-
-    if _fallback_supported:
-        try:
-            return client.beta.messages.create(
-                betas=[_FALLBACK_BETA], fallbacks="default", **kwargs
-            )
-        except TypeError as exc:
-            if "fallbacks" not in str(exc) and "betas" not in str(exc):
-                raise  # SDK 파라미터 문제가 아니라면 그대로 전달
-            _fallback_supported = False
-        except (anthropic.BadRequestError, anthropic.NotFoundError):
-            _fallback_supported = False  # beta 미허용 조직/버전
-
-    return client.messages.create(**kwargs)
+    match = _NARRATION_RE.search(buffer)
+    if not match:
+        return None
+    try:
+        return json.loads(f'"{match.group(1)}"')
+    except json.JSONDecodeError:
+        return None
 
 
 def _normalize(data: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
@@ -269,8 +261,14 @@ def call_gm(
     history: list[dict[str, Any]],
     state: dict[str, Any],
     player_input: str,
+    on_narration: Optional[Callable[[str], None]] = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """GM 응답 1회. (파싱된 응답, 갱신된 대화 히스토리)를 돌려준다."""
+    """GM 응답 1회. (파싱된 응답, 갱신된 대화 히스토리)를 돌려준다.
+
+    on_narration이 주어지면 나레이션이 도착하는 대로 조각을 넘겨준다.
+    응답 전체를 기다리는 대신 글자가 찍히기 시작하므로 체감 대기가 크게 줄고,
+    서버가 혼잡해 느릴 때도 멈춘 것처럼 보이지 않는다.
+    """
     user_text = (
         f"{player_input}\n\n"
         f"[현재 상태]\n{json.dumps(state_for_prompt(state), ensure_ascii=False)}"
@@ -292,8 +290,7 @@ def call_gm(
     ]
 
     try:
-        response = _create_message(
-            client,
+        with client.messages.stream(
             model=MODEL,
             max_tokens=MAX_TOKENS,
             system=[
@@ -308,7 +305,18 @@ def call_gm(
                 "effort": "medium",
                 "format": {"type": "json_schema", "schema": RESPONSE_SCHEMA},
             },
-        )
+        ) as stream:
+            buffer = ""
+            shown = ""
+            for chunk in stream.text_stream:
+                buffer += chunk
+                if on_narration is None:
+                    continue
+                partial = _partial_narration(buffer)
+                if partial and partial != shown:
+                    shown = partial
+                    on_narration(partial)
+            response = stream.get_final_message()
     except anthropic.APIStatusError as exc:
         # 529/429는 서버 혼잡이라 우리 쪽 문제가 아니다. SDK가 이미 여러 번
         # 재시도한 뒤이므로, 사용자에게 원인과 대처를 분명히 알린다.
