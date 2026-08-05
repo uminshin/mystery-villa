@@ -174,6 +174,36 @@ def culprit_clues(state: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def clues_pointing_to(state: dict[str, Any], suspect: str) -> list[dict[str, Any]]:
+    """플레이어가 찾은 단서 중 해당 인물을 가리키는 것들."""
+    return [
+        CLUES[cid] for cid in state["clues_found"] if CLUES[cid]["points_to"] == suspect
+    ]
+
+
+# 물증 없이 심증만 쌓였다고 볼 의심도 기준선.
+EVIDENCE_WARNING_THRESHOLD = 40
+
+# 정답 엔딩에 필요한 결정적 단서 수. 경고 문구와 판정이 같은 값을 쓴다.
+REQUIRED_CLUES = 2
+
+
+def weak_evidence_warnings(state: dict[str, Any]) -> list[tuple[str, int]]:
+    """의심도는 높은데 뒷받침하는 단서가 부족한 인물 목록.
+
+    진범이 누구인지는 보지 않는다. A/B/C에 같은 규칙을 적용하므로
+    이 경고로 진범을 역산할 수 없다 — 누설 없이 "단서를 더 모으라"만 전달한다.
+    """
+    result = []
+    for key in SUSPECTS:
+        if state["suspicion"][key] < EVIDENCE_WARNING_THRESHOLD:
+            continue
+        count = len(clues_pointing_to(state, key))
+        if count < REQUIRED_CLUES:
+            result.append((key, count))
+    return result
+
+
 ENDINGS = {
     "TRUE": "정답 엔딩 · 진실",
     "INSUFFICIENT": "미제사건 엔딩 · 증거 불충분",

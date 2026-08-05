@@ -47,8 +47,58 @@ def inject_css() -> None:
         .st-key-location h1 {{
             margin-bottom: 0.1rem;
         }}
+
+        /* 단서 카드: 앞으로 튀어나오며 등장하고 강조색 테두리가 두 번 번쩍인다 */
         .st-key-clue-card {{
             border-color: {HIGHLIGHT} !important;
+            animation: clue-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2),
+                       clue-glow 1.0s ease-in-out 0.25s 2;
+        }}
+        @keyframes clue-in {{
+            0%   {{ transform: scale(0.93); opacity: 0; }}
+            60%  {{ transform: scale(1.025); opacity: 1; }}
+            100% {{ transform: scale(1); opacity: 1; }}
+        }}
+        @keyframes clue-glow {{
+            0%, 100% {{ box-shadow: 0 0 0 0 rgba(242, 193, 78, 0); }}
+            45%      {{ box-shadow: 0 0 0 5px rgba(242, 193, 78, 0.32); }}
+        }}
+
+        /* 사이드바 단서 개수: 새 단서가 들어온 턴에만 강조색으로 점멸.
+           키에 턴 번호가 들어가 있어서 턴마다 애니메이션이 다시 걸린다. */
+        [class*="st-key-clue-count-hit"] p {{
+            color: {HIGHLIGHT} !important;
+            font-weight: 600;
+            animation: chip-pop 0.9s ease-out;
+        }}
+
+        /* 의심도·신뢰도 변화: 잠깐 커졌다가 제자리로 */
+        [class*="st-key-delta-flash"] p {{
+            color: {HIGHLIGHT} !important;
+            animation: chip-pop 1.1s ease-out;
+        }}
+        @keyframes chip-pop {{
+            0%   {{ transform: scale(1); }}
+            25%  {{ transform: scale(1.18); }}
+            55%  {{ transform: scale(1.04); }}
+            100% {{ transform: scale(1); }}
+        }}
+        [class*="st-key-delta-flash"], [class*="st-key-clue-count-hit"] {{
+            transform-origin: left center;
+        }}
+
+        /* 남은 턴이 얼마 없을 때 강조 */
+        [class*="st-key-turns-low"] p {{
+            color: {HIGHLIGHT} !important;
+            font-weight: 600;
+        }}
+
+        @media (prefers-reduced-motion: reduce) {{
+            .st-key-clue-card,
+            [class*="st-key-delta-flash"] p,
+            [class*="st-key-clue-count-hit"] p {{
+                animation: none;
+            }}
         }}
         </style>"""
     )
@@ -72,6 +122,7 @@ def start_new_game() -> None:
     st.session_state.found = None
     st.session_state.ending = None
     st.session_state.pending_input = None
+    st.session_state.last_deltas = None
 
 
 def request_gm(player_input: str) -> None:
@@ -105,7 +156,24 @@ def request_gm(player_input: str) -> None:
     st.session_state.pending_input = None
     st.session_state.history = history
     st.session_state.gm = gm
+
+    # 사이드바에서 변화를 강조하려면 어떤 값이 얼마나 움직였는지 알아야 한다.
+    # 실제 적용값은 clamp를 거치므로 적용 전후를 비교해서 기록한다.
+    before = {
+        "suspicion": dict(st.session_state.state["suspicion"]),
+        "trust": dict(st.session_state.state["npc_trust"]),
+    }
     gs.apply_deltas(st.session_state.state, gm["suspicion_delta"], gm["trust_delta"])
+    st.session_state.last_deltas = {
+        "suspicion": {
+            key: st.session_state.state["suspicion"][key] - before["suspicion"][key]
+            for key in gs.SUSPECTS
+        },
+        "trust": {
+            key: st.session_state.state["npc_trust"][key] - before["trust"][key]
+            for key in gs.SUSPECTS
+        },
+    }
 
 
 def take_action(choice: dict[str, str]) -> None:
@@ -164,14 +232,36 @@ def render_sidebar() -> None:
             },
         )
 
-        st.caption(f"단서 {len(state['clues_found'])} / {len(gs.CLUES)}")
+        # 이번 턴에 움직인 값만 칩으로 띄운다. 표의 셀은 애니메이션을 걸 수 없어서
+        # 변화분을 따로 보여주는 방식으로 갔다. 키에 턴을 넣어 매 턴 다시 재생된다.
+        chips = []
+        deltas = st.session_state.last_deltas or {}
+        for key, info in gs.SUSPECTS.items():
+            for kind, label in (("suspicion", "의심"), ("trust", "신뢰")):
+                amount = deltas.get(kind, {}).get(key, 0)
+                if amount:
+                    chips.append(f"{info['short']} {label} {amount:+d}")
+        if chips:
+            with st.container(key=f"delta-flash-{state['turn']}"):
+                st.markdown(" · ".join(chips))
+
+        found_this_turn = st.session_state.found is not None
+        count_key = (
+            f"clue-count-hit-{state['turn']}" if found_this_turn else "clue-count"
+        )
+        with st.container(key=count_key):
+            st.caption(f"단서 {len(state['clues_found'])} / {len(gs.CLUES)}")
+
         if state["clues_found"]:
-            st.markdown(
-                "\n".join(
-                    f"- **{gs.CLUES[cid]['name']}**  \n  :gray[{gs.CLUES[cid]['location']}]"
-                    for cid in state["clues_found"]
+            lines = []
+            for index, cid in enumerate(state["clues_found"]):
+                clue = gs.CLUES[cid]
+                newest = found_this_turn and index == len(state["clues_found"]) - 1
+                mark = " :orange[**← 방금**]" if newest else ""
+                lines.append(
+                    f"- **{clue['name']}**{mark}  \n  :gray[{clue['location']}]"
                 )
-            )
+            st.markdown("\n".join(lines))
         else:
             st.caption("아직 없음")
 
@@ -242,8 +332,12 @@ def render_play() -> None:
     # 제목을 없앤 자리를 장소가 채운다. 지금 어디에 있는지가 화면의 머리글이다.
     with st.container(key="location"):
         st.markdown(f"# {state['location']}")
+
     remaining = state["max_turns"] - state["turn"]
-    st.caption(f"남은 턴 {remaining}")
+    with st.container(key="turns-low" if remaining <= 3 else "turns"):
+        st.caption(
+            f"남은 턴 {remaining}" + ("  · 시간이 얼마 없다" if remaining <= 3 else "")
+        )
 
     with st.container(key="narration"):
         st.markdown(gm["narration"])
@@ -254,6 +348,16 @@ def render_play() -> None:
             st.badge("단서 획득", icon=":material/bookmark:", color="orange")
             st.markdown(f"**{found['name']}**")
             st.caption(found["detail"])
+
+    # 심증만 앞서갈 때 물증을 챙기라고 알린다. 진범 정보를 보지 않으므로
+    # 이 경고로 범인을 역산할 수 없다 (A/B/C에 같은 규칙이 걸린다).
+    for key, count in gs.weak_evidence_warnings(state):
+        st.warning(
+            f"**{gs.SUSPECTS[key]['name']}** 쪽으로 의심이 쏠려 있지만, "
+            f"그를 가리키는 물증은 {count}개입니다. "
+            f"지목이 받아들여지려면 결정적 단서 {gs.REQUIRED_CLUES}개가 필요합니다.",
+            icon=":material/warning:",
+        )
 
     st.divider()
     st.caption("이동은 턴을 소모하지 않습니다. 조사와 심문만 1턴.")
