@@ -1,0 +1,39 @@
+<svg viewBox="0 0 800 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="금고실 — 다이얼이 달린 금고문과 서류 선반">
+  <rect width="800" height="240" fill="#14110f"/>
+  <rect y="196" width="800" height="44" fill="#1b1714"/>
+  <path d="M0 196 H800" stroke="#3a322a" stroke-width="2"/>
+  <g stroke="#3a322a" stroke-width="2" fill="#1e1a17">
+    <rect x="290" y="40" width="220" height="156" rx="6"/>
+    <rect x="308" y="58" width="184" height="120" rx="4"/>
+  </g>
+  <circle cx="400" cy="118" r="34" fill="#241f1a" stroke="#3a322a" stroke-width="2"/>
+  <circle cx="400" cy="118" r="22" fill="none" stroke="#d9a94a" stroke-width="2" opacity="0.75"/>
+  <g stroke="#d9a94a" stroke-width="2" opacity="0.75">
+    <path d="M400 96 v-8 M400 148 v-8 M378 118 h-8 M430 118 h-8"/>
+    <path d="M400 118 l14 -12"/>
+  </g>
+  <g stroke="#3a322a" stroke-width="2">
+    <path d="M492 118 h26 M518 106 v24"/>
+  </g>
+  <g stroke="#3a322a" stroke-width="2" fill="none">
+    <rect x="56" y="70" width="164" height="126"/>
+    <path d="M56 112 H220 M56 154 H220"/>
+  </g>
+  <g fill="#241f1a">
+    <rect x="66" y="80" width="42" height="30"/><rect x="114" y="84" width="38" height="26"/>
+    <rect x="160" y="78" width="50" height="32"/>
+    <rect x="66" y="122" width="46" height="30"/><rect x="120" y="126" width="40" height="26"/>
+    <rect x="66" y="164" width="38" height="30"/><rect x="112" y="168" width="46" height="26"/>
+  </g>
+  <g stroke="#3a322a" stroke-width="2" fill="#1e1a17">
+    <rect x="588" y="140" width="150" height="56" rx="3"/>
+  </g>
+  <g fill="#e8ddc8" opacity="0.3">
+    <rect x="606" y="122" width="52" height="30" transform="rotate(-8 606 122)"/>
+    <rect x="664" y="128" width="48" height="26" transform="rotate(5 664 128)"/>
+  </g>
+  <path d="M612 132 h34 M612 140 h26" stroke="#14110f" stroke-width="1.5" opacity="0.7"/>
+  <g stroke="#2b2521" stroke-width="1.5" opacity="0.7">
+    <path d="M760 40 v40 M40 40 v30"/>
+  </g>
+</svg>

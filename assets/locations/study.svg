@@ -1,0 +1,37 @@
+<svg viewBox="0 0 800 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="서재 — 책장과 책상, 창밖의 폭우">
+  <rect width="800" height="240" fill="#14110f"/>
+  <rect y="196" width="800" height="44" fill="#1b1714"/>
+  <path d="M0 196 H800" stroke="#3a322a" stroke-width="2"/>
+  <g stroke="#3a322a" stroke-width="2" fill="none">
+    <rect x="40" y="40" width="190" height="156"/>
+    <path d="M40 78 H230 M40 116 H230 M40 154 H230"/>
+  </g>
+  <g fill="#241f1a">
+    <rect x="48" y="48" width="9" height="28"/><rect x="60" y="52" width="7" height="24"/>
+    <rect x="70" y="46" width="10" height="30"/><rect x="84" y="54" width="8" height="22"/>
+    <rect x="48" y="86" width="8" height="28"/><rect x="59" y="90" width="10" height="24"/>
+    <rect x="150" y="88" width="9" height="26"/><rect x="162" y="84" width="7" height="30"/>
+    <rect x="48" y="124" width="10" height="28"/><rect x="62" y="128" width="8" height="24"/>
+    <rect x="190" y="126" width="9" height="26"/><rect x="202" y="122" width="8" height="30"/>
+    <rect x="48" y="162" width="8" height="30"/><rect x="59" y="166" width="9" height="26"/>
+  </g>
+  <g stroke="#3a322a" stroke-width="2" fill="#241f1a">
+    <rect x="300" y="148" width="200" height="10" rx="3"/>
+    <path d="M318 158 v38 M482 158 v38"/>
+  </g>
+  <path d="M352 148 l30 -8 30 8 z" fill="#1e1a17" stroke="#3a322a" stroke-width="1.5"/>
+  <path d="M382 140 v-8" stroke="#3a322a" stroke-width="1.5"/>
+  <g stroke="#d9a94a" stroke-width="2" fill="none" opacity="0.8">
+    <path d="M446 148 v-14 a8 8 0 0 1 16 0 v14"/>
+  </g>
+  <circle cx="454" cy="150" r="12" fill="#d9a94a" opacity="0.16"/>
+  <g stroke="#3a322a" stroke-width="2" fill="none">
+    <rect x="588" y="52" width="164" height="120"/>
+    <path d="M670 52 V172 M588 112 H752"/>
+  </g>
+  <g stroke="#6d8394" stroke-width="1.5" opacity="0.5">
+    <path d="M604 62 l-8 40 M628 58 l-8 40 M652 66 l-8 40"/>
+    <path d="M690 60 l-8 40 M714 64 l-8 40 M738 58 l-8 40"/>
+    <path d="M604 122 l-6 34 M636 126 l-6 34 M700 124 l-6 34 M732 128 l-6 34"/>
+  </g>
+</svg>

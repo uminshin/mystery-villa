@@ -1,0 +1,28 @@
+<svg viewBox="0 0 800 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="침실 — 침대와 협탁의 촛불">
+  <rect width="800" height="240" fill="#14110f"/>
+  <rect y="196" width="800" height="44" fill="#1b1714"/>
+  <path d="M0 196 H800" stroke="#3a322a" stroke-width="2"/>
+  <g stroke="#3a322a" stroke-width="2" fill="#241f1a">
+    <path d="M150 196 v-92 q0 -14 14 -14 h44 q14 0 14 14 v92 z"/>
+    <rect x="222" y="150" width="330" height="46" rx="6"/>
+    <path d="M552 196 v-56 q0 -12 12 -12 h10 q12 0 12 12 v56 z"/>
+  </g>
+  <path d="M236 150 q40 -30 92 -6 q-46 12 -92 6 z" fill="#2c2621" stroke="#3a322a" stroke-width="1.5"/>
+  <path d="M340 150 h206 v-8 q-104 -14 -206 8 z" fill="#1e1a17" stroke="#3a322a" stroke-width="1.5"/>
+  <g stroke="#3a322a" stroke-width="2" fill="#241f1a">
+    <rect x="620" y="146" width="96" height="50" rx="4"/>
+    <path d="M620 168 H716"/>
+  </g>
+  <circle cx="668" cy="182" r="3" fill="#3a322a"/>
+  <rect x="656" y="122" width="10" height="24" rx="2" fill="#e8ddc8" opacity="0.55"/>
+  <path d="M661 122 q-7 -10 0 -18 q7 8 0 18 z" fill="#f2c14e" opacity="0.85"/>
+  <circle cx="661" cy="112" r="26" fill="#f2c14e" opacity="0.07"/>
+  <g stroke="#3a322a" stroke-width="2" fill="none">
+    <rect x="60" y="44" width="120" height="86"/>
+    <path d="M120 44 V130 M60 87 H180"/>
+  </g>
+  <g stroke="#6d8394" stroke-width="1.5" opacity="0.45">
+    <path d="M74 54 l-7 24 M96 50 l-7 24 M134 56 l-7 24 M156 52 l-7 24"/>
+    <path d="M74 96 l-6 22 M104 98 l-6 22 M140 96 l-6 22"/>
+  </g>
+</svg>

@@ -1,0 +1,32 @@
+<svg viewBox="0 0 800 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="정원 — 비 그친 뒤의 젖은 흙과 발자국">
+  <rect width="800" height="240" fill="#14110f"/>
+  <path d="M0 178 H800 V240 H0 z" fill="#1c1815"/>
+  <path d="M0 178 H800" stroke="#3a322a" stroke-width="2"/>
+  <g stroke="#2f2822" stroke-width="2" fill="#191512">
+    <path d="M60 178 v-46 q34 -26 68 0 v46 z"/>
+    <path d="M700 178 v-38 q28 -22 56 0 v38 z"/>
+  </g>
+  <g stroke="#3a322a" stroke-width="2" fill="none">
+    <path d="M300 178 V72 M500 178 V72"/>
+    <path d="M300 92 H500"/>
+    <path d="M322 178 V96 M348 178 V96 M374 178 V96 M400 178 V96 M426 178 V96 M452 178 V96 M478 178 V96"/>
+    <path d="M300 72 q100 -26 200 0"/>
+  </g>
+  <g stroke="#2b2521" stroke-width="2" fill="#191512">
+    <path d="M180 178 v-70 l24 -30 l24 30 v70 z"/>
+    <path d="M596 178 v-58 l20 -26 l20 26 v58 z"/>
+  </g>
+  <g fill="#d9a94a" opacity="0.4">
+    <ellipse cx="250" cy="206" rx="9" ry="5" transform="rotate(-14 250 206)"/>
+    <ellipse cx="292" cy="196" rx="9" ry="5" transform="rotate(-14 292 196)"/>
+    <ellipse cx="336" cy="210" rx="9" ry="5" transform="rotate(-14 336 210)"/>
+    <ellipse cx="378" cy="200" rx="9" ry="5" transform="rotate(-14 378 200)"/>
+    <ellipse cx="422" cy="214" rx="9" ry="5" transform="rotate(-14 422 214)"/>
+    <ellipse cx="464" cy="204" rx="9" ry="5" transform="rotate(-14 464 204)"/>
+  </g>
+  <g stroke="#6d8394" stroke-width="1.5" opacity="0.3">
+    <path d="M90 20 l-5 18 M160 14 l-5 18 M240 24 l-5 18 M330 16 l-5 18"/>
+    <path d="M540 22 l-5 18 M620 14 l-5 18 M700 26 l-5 18"/>
+  </g>
+  <circle cx="660" cy="46" r="20" fill="#e8ddc8" opacity="0.09"/>
+</svg>

@@ -1,0 +1,33 @@
+<svg viewBox="0 0 800 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="거실 — 식어가는 벽난로와 안락의자">
+  <rect width="800" height="240" fill="#14110f"/>
+  <rect y="196" width="800" height="44" fill="#1b1714"/>
+  <g stroke="#3a322a" stroke-width="2" fill="none">
+    <path d="M0 196 H800"/>
+    <path d="M120 196 V64 h150 v132" />
+    <path d="M138 196 V88 h114 v108"/>
+  </g>
+  <path d="M150 196 q45 -58 90 0 z" fill="#8f2f28" opacity="0.5"/>
+  <path d="M168 196 q27 -36 54 0 z" fill="#d9a94a" opacity="0.55"/>
+  <g fill="#241f1a" stroke="#3a322a" stroke-width="2">
+    <path d="M430 196 v-56 q0 -22 24 -22 h72 q24 0 24 22 v56 z"/>
+    <rect x="416" y="150" width="20" height="46" rx="6"/>
+    <rect x="544" y="150" width="20" height="46" rx="6"/>
+  </g>
+  <g stroke="#3a322a" stroke-width="2" fill="#241f1a">
+    <rect x="620" y="168" width="110" height="8" rx="3"/>
+    <path d="M636 176 v20 M714 176 v20"/>
+  </g>
+  <g stroke="#d9a94a" stroke-width="2" fill="none" opacity="0.85">
+    <path d="M664 168 v-9 a7 7 0 0 1 14 0 v9"/>
+  </g>
+  <ellipse cx="700" cy="166" rx="9" ry="4" fill="#3a322a"/>
+  <g stroke="#3a322a" stroke-width="2" fill="none">
+    <path d="M700 166 l6 -10"/>
+  </g>
+  <path d="M330 30 v34" stroke="#3a322a" stroke-width="2"/>
+  <path d="M306 64 h48 l-10 26 h-28 z" fill="#241f1a" stroke="#3a322a" stroke-width="2"/>
+  <circle cx="330" cy="96" r="5" fill="#d9a94a" opacity="0.7"/>
+  <g stroke="#2b2521" stroke-width="1.5" opacity="0.8">
+    <path d="M40 40 l14 26 M74 26 l14 26 M108 46 l10 20"/>
+  </g>
+</svg>

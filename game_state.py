@@ -72,6 +72,17 @@ CLUES: dict[str, dict[str, Any]] = {
 
 CLUE_BY_LOCATION = {clue["location"]: clue for clue in CLUES.values()}
 
+# 장소별 삽화 파일명(assets/locations/<slug>.svg). 한글 장소명을 파일명으로
+# 쓰지 않기 위해 매핑을 둔다.
+LOCATION_ART = {
+    "거실": "living-room",
+    "서재": "study",
+    "침실": "bedroom",
+    "정원": "garden",
+    "금고실": "vault",
+    "다락방": "attic",
+}
+
 
 def new_state() -> dict[str, Any]:
     return {

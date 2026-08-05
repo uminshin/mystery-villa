@@ -5,11 +5,16 @@
 
 from __future__ import annotations
 
+import base64
+from pathlib import Path
+
 import anthropic
 import streamlit as st
 
 import game_state as gs
 from gm import GMError, call_gm
+
+ART_DIR = Path(__file__).parent / "assets" / "locations"
 
 st.set_page_config(page_title="그날 밤, 별장에서", page_icon="🕯️")
 
@@ -31,6 +36,72 @@ ACTION_ICONS = {
 }
 
 
+@st.cache_data(show_spinner=False)
+def load_location_art(location: str) -> str | None:
+    """장소 삽화 SVG를 읽어 온다. 파일이 없으면 None(삽화 없이 진행)."""
+    slug = gs.LOCATION_ART.get(location)
+    if not slug:
+        return None
+    path = ART_DIR / f"{slug}.svg"
+    if not path.exists():
+        return None
+    return path.read_text(encoding="utf-8")
+
+
+def _art_data_uri(location: str) -> str | None:
+    svg = load_location_art(location)
+    if svg is None:
+        return None
+    encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
+def render_location_art(location: str) -> None:
+    """장소 삽화를 배경 이미지로 깐다.
+
+    st.html은 <svg>를 살균 과정에서 제거하므로 인라인 SVG는 쓸 수 없다.
+    data URI 배경으로 넣으면 <div>와 <style>만 쓰게 되어 그대로 살아남는다.
+    """
+    uri = _art_data_uri(location)
+    if uri is None:
+        return
+    st.html(
+        f"""<style>
+        .villa-art {{
+            width: 100%;
+            aspect-ratio: 800 / 240;
+            background-image: url('{uri}');
+            background-size: cover;
+            background-position: center;
+            border: 1px solid #3a322a;
+            border-radius: 4px;
+        }}
+        </style>
+        <div class="villa-art"></div>"""
+    )
+
+
+def inject_clue_background(location: str) -> None:
+    """단서 카드 배경에 그 장소의 삽화를 깔아 준다.
+
+    본문을 읽을 수 있어야 하므로 어두운 레이어를 한 겹 덮는다.
+    """
+    uri = _art_data_uri(location)
+    if uri is None:
+        return
+    st.html(
+        f"""<style>
+        .st-key-clue-card {{
+            background-image:
+                linear-gradient(rgba(20, 17, 15, 0.9), rgba(20, 17, 15, 0.9)),
+                url('{uri}');
+            background-size: cover;
+            background-position: center;
+        }}
+        </style>"""
+    )
+
+
 def inject_css() -> None:
     """나레이션 본문을 키우고 강조 요소에 색을 넣는다.
 
@@ -47,6 +118,7 @@ def inject_css() -> None:
         .st-key-location h1 {{
             margin-bottom: 0.1rem;
         }}
+
 
         /* 단서 카드: 앞으로 튀어나오며 등장하고 강조색 테두리가 두 번 번쩍인다 */
         .st-key-clue-card {{
@@ -72,18 +144,13 @@ def inject_css() -> None:
             animation: chip-pop 0.9s ease-out;
         }}
 
-        /* 의심도·신뢰도 변화: 잠깐 커졌다가 제자리로 */
-        [class*="st-key-delta-flash"] p {{
-            color: {HIGHLIGHT} !important;
-            animation: chip-pop 1.1s ease-out;
-        }}
         @keyframes chip-pop {{
             0%   {{ transform: scale(1); }}
             25%  {{ transform: scale(1.18); }}
             55%  {{ transform: scale(1.04); }}
             100% {{ transform: scale(1); }}
         }}
-        [class*="st-key-delta-flash"], [class*="st-key-clue-count-hit"] {{
+        [class*="st-key-clue-count-hit"] {{
             transform-origin: left center;
         }}
 
@@ -95,7 +162,6 @@ def inject_css() -> None:
 
         @media (prefers-reduced-motion: reduce) {{
             .st-key-clue-card,
-            [class*="st-key-delta-flash"] p,
             [class*="st-key-clue-count-hit"] p {{
                 animation: none;
             }}
@@ -124,7 +190,6 @@ def start_new_game() -> None:
     st.session_state.found = None
     st.session_state.ending = None
     st.session_state.pending_input = None
-    st.session_state.last_deltas = None
     st.session_state.log = []
     st.session_state.notes = ""
 
@@ -167,24 +232,7 @@ def request_gm(player_input: str, narration_slot=None) -> None:
     st.session_state.pending_input = None
     st.session_state.history = history
     st.session_state.gm = gm
-
-    # 사이드바에서 변화를 강조하려면 어떤 값이 얼마나 움직였는지 알아야 한다.
-    # 실제 적용값은 clamp를 거치므로 적용 전후를 비교해서 기록한다.
-    before = {
-        "suspicion": dict(st.session_state.state["suspicion"]),
-        "trust": dict(st.session_state.state["npc_trust"]),
-    }
     gs.apply_deltas(st.session_state.state, gm["suspicion_delta"], gm["trust_delta"])
-    st.session_state.last_deltas = {
-        "suspicion": {
-            key: st.session_state.state["suspicion"][key] - before["suspicion"][key]
-            for key in gs.SUSPECTS
-        },
-        "trust": {
-            key: st.session_state.state["npc_trust"][key] - before["trust"][key]
-            for key in gs.SUSPECTS
-        },
-    }
 
 
 def take_action(choice: dict[str, str], narration_slot=None) -> None:
@@ -263,19 +311,6 @@ def render_case_file() -> None:
                 ),
             },
         )
-
-        # 이번 턴에 움직인 값만 칩으로 띄운다. 표의 셀은 애니메이션을 걸 수 없어서
-        # 변화분을 따로 보여주는 방식으로 갔다. 키에 턴을 넣어 매 턴 다시 재생된다.
-        chips = []
-        deltas = st.session_state.last_deltas or {}
-        for key, info in gs.SUSPECTS.items():
-            for kind, label in (("suspicion", "의심"), ("trust", "신뢰")):
-                amount = deltas.get(kind, {}).get(key, 0)
-                if amount:
-                    chips.append(f"{info['short']} {label} {amount:+d}")
-        if chips:
-            with st.container(key=f"delta-flash-{state['turn']}"):
-                st.markdown(" · ".join(chips))
 
     with notes_tab:
         # 자동 기록 + 직접 메모. 알리바이의 앞뒤를 맞추려면 "누가 몇 시에 뭘 했다"를
@@ -391,6 +426,7 @@ def render_play() -> None:
     # 제목을 없앤 자리를 장소가 채운다. 지금 어디에 있는지가 화면의 머리글이다.
     with st.container(key="location"):
         st.markdown(f"# {state['location']}")
+    render_location_art(state["location"])
 
     remaining = state["max_turns"] - state["turn"]
     with st.container(key="turns-low" if remaining <= 3 else "turns"):
@@ -405,6 +441,7 @@ def render_play() -> None:
 
     if st.session_state.found:
         found = st.session_state.found
+        inject_clue_background(found["location"])
         with st.container(border=True, key="clue-card"):
             st.badge("단서 획득", icon=":material/bookmark:", color="orange")
             st.markdown(f"**{found['name']}**")
