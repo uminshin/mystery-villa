@@ -306,6 +306,13 @@ def call_gm(
             },
         )
     except anthropic.APIStatusError as exc:
+        # 529/429는 서버 혼잡이라 우리 쪽 문제가 아니다. SDK가 이미 여러 번
+        # 재시도한 뒤이므로, 사용자에게 원인과 대처를 분명히 알린다.
+        if exc.status_code in (429, 529):
+            raise GMError(
+                f"Claude API가 일시적으로 혼잡합니다 ({exc.status_code}). "
+                "자동 재시도까지 실패했으니 잠시 뒤 '다시 시도'를 눌러 주세요."
+            ) from exc
         raise GMError(f"API 오류 ({exc.status_code}): {exc.message}") from exc
     except anthropic.APIConnectionError as exc:
         raise GMError("네트워크 오류. 잠시 후 다시 시도하세요.") from exc

@@ -16,8 +16,11 @@ st.set_page_config(page_title="그날 밤, 별장에서", page_icon="🕯️")
 
 @st.cache_resource
 def get_client() -> anthropic.Anthropic:
-    # ANTHROPIC_API_KEY 환경변수 또는 `ant auth login` 프로필을 자동으로 사용
-    return anthropic.Anthropic()
+    # ANTHROPIC_API_KEY 환경변수 또는 `ant auth login` 프로필을 자동으로 사용.
+    # 529(overloaded)/429는 SDK가 지수 백오프로 자동 재시도한다. 기본 2회로는
+    # 과부하 구간을 넘기지 못해서 올렸다. 게임 한 턴이 늦게 오는 것이
+    # 에러 화면을 보는 것보다 낫다.
+    return anthropic.Anthropic(max_retries=6, timeout=120.0)
 
 
 def start_new_game() -> None:
