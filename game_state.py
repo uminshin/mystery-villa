@@ -1,0 +1,222 @@
+"""게임 상태 스키마와 결정론적 규칙.
+
+턴 증가 / 단서 발견 / 엔딩 분기는 전부 여기서 처리한다.
+LLM은 나레이션과 선택지, 의심도·신뢰도 델타만 제안하고
+실제 상태 변경 권한은 이 모듈이 갖는다(엔딩 분기를 확정적으로 만들기 위함).
+"""
+
+from __future__ import annotations
+
+import copy
+from typing import Any, Optional
+
+MAX_TURNS = 10
+
+LOCATIONS = ["거실", "서재", "침실", "정원", "금고실", "다락방"]
+
+SUSPECTS = {
+    "A": {"name": "A · 배다른 형제", "motive": "유산 상속"},
+    "B": {"name": "B · 전 비즈니스 파트너", "motive": "금전 다툼"},
+    "C": {"name": "C · 개인 비서", "motive": "숨겨진 관계"},
+}
+
+# 진범 (플레이어에게 공개하지 않음)
+CULPRIT = "C"
+
+# 장소당 단서 1개. points_to = 이 단서가 가리키는 용의자.
+CLUES: dict[str, dict[str, Any]] = {
+    "c1": {
+        "id": "c1",
+        "location": "거실",
+        "name": "엎어진 위스키 잔 두 개",
+        "detail": "잔 하나에만 지문이 문질러 지워져 있다. 사망 직전 누군가와 마주 앉아 있었다.",
+        "points_to": "A",
+    },
+    "c2": {
+        "id": "c2",
+        "location": "서재",
+        "name": "찢겨진 유언장 초안",
+        "detail": "상속 지분을 재조정한 흔적. 찢긴 조각 하나에 'A에게는 한 푼도'라는 문구가 남아 있다.",
+        "points_to": "A",
+    },
+    "c3": {
+        "id": "c3",
+        "location": "침실",
+        "name": "베개 밑의 편지",
+        "detail": "오래 접힌 자국이 있는 연애편지. 끝에 적힌 서명은 알파벳 'C' 한 글자다.",
+        "points_to": "C",
+    },
+    "c4": {
+        "id": "c4",
+        "location": "정원",
+        "name": "젖은 흙에 남은 발자국",
+        "detail": "굽이 얇은 여성용 구두. 별장 안쪽에서 창고 쪽으로 향했다가 되돌아온 방향이다.",
+        "points_to": "C",
+    },
+    "c5": {
+        "id": "c5",
+        "location": "금고실",
+        "name": "위조된 채무 상환 계약서",
+        "detail": "서명 필체가 두 군데에서 어긋난다. 채무자 이름은 B로 적혀 있다.",
+        "points_to": "B",
+    },
+    "c6": {
+        "id": "c6",
+        "location": "다락방",
+        "name": "반쯤 태운 사진과 빈 수면제 병",
+        "detail": "사진에는 피해자와 비서가 나란히 서 있다. 비서 쪽 얼굴만 불에 그슬렸다.",
+        "points_to": "C",
+    },
+}
+
+CLUE_BY_LOCATION = {clue["location"]: clue for clue in CLUES.values()}
+
+
+def new_state() -> dict[str, Any]:
+    return {
+        "turn": 0,
+        "max_turns": MAX_TURNS,
+        "location": "거실",
+        "clues_found": [],
+        "suspicion": {"A": 0, "B": 0, "C": 0},
+        "npc_trust": {"A": 50, "B": 50, "C": 50},
+        "game_over": False,
+        "ending": None,
+    }
+
+
+def clue_at(location: str) -> Optional[dict[str, Any]]:
+    return CLUE_BY_LOCATION.get(location)
+
+
+def undiscovered_clue_at(state: dict[str, Any], location: str) -> Optional[dict[str, Any]]:
+    clue = clue_at(location)
+    if clue and clue["id"] not in state["clues_found"]:
+        return clue
+    return None
+
+
+def resolve_action(state: dict[str, Any], choice: dict[str, str]) -> Optional[dict[str, Any]]:
+    """플레이어 행동을 상태에 반영하고, 이번 턴에 새로 발견한 단서를 돌려준다."""
+    action = choice.get("action", "")
+    target = choice.get("target", "")
+
+    if action == "이동" and target in LOCATIONS:
+        state["location"] = target
+        return None
+
+    if action == "조사":
+        # target이 비어 있으면 현재 장소를 조사
+        location = target if target in LOCATIONS else state["location"]
+        state["location"] = location
+        found = undiscovered_clue_at(state, location)
+        if found:
+            state["clues_found"].append(found["id"])
+        return found
+
+    # 심문: 나레이션과 델타로만 결과가 드러난다
+    return None
+
+
+# 턴을 소모하지 않는 행동. 이동만 자유이고, 조사·심문은 1턴을 쓴다.
+# (10턴 안에 이동까지 턴을 먹으면 심문할 여유가 구조적으로 사라져서 이렇게 바꿨다.)
+FREE_ACTIONS = frozenset({"이동"})
+
+
+def costs_turn(action: str) -> bool:
+    return action not in FREE_ACTIONS
+
+
+def _clamp(value: int, low: int, high: int) -> int:
+    return max(low, min(high, value))
+
+
+def apply_deltas(
+    state: dict[str, Any],
+    suspicion_delta: dict[str, int],
+    trust_delta: dict[str, int],
+) -> None:
+    for key in ("A", "B", "C"):
+        state["suspicion"][key] = _clamp(
+            state["suspicion"][key] + int(suspicion_delta.get(key, 0)), 0, 100
+        )
+        state["npc_trust"][key] = _clamp(
+            state["npc_trust"][key] + int(trust_delta.get(key, 0)), 0, 100
+        )
+
+
+def advance_turn(state: dict[str, Any]) -> None:
+    state["turn"] += 1
+
+
+def must_accuse(state: dict[str, Any]) -> bool:
+    return state["turn"] >= state["max_turns"]
+
+
+def culprit_clues(state: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        CLUES[cid] for cid in state["clues_found"] if CLUES[cid]["points_to"] == CULPRIT
+    ]
+
+
+ENDINGS = {
+    "TRUE": "정답 엔딩 · 진실",
+    "INSUFFICIENT": "미제사건 엔딩 · 증거 불충분",
+    "WRONG": "오답 엔딩 · 잘못된 확신",
+    "COLD_CASE": "미제사건 엔딩 · 침묵",
+}
+
+
+def accuse(state: dict[str, Any], target: Optional[str]) -> dict[str, Any]:
+    """지목 결과를 확정한다. target=None이면 지목 포기."""
+    found = culprit_clues(state)
+    names = ", ".join(clue["name"] for clue in found) or "없음"
+
+    if target is None:
+        ending = "COLD_CASE"
+        text = (
+            "당신은 끝내 아무도 지목하지 않았다. 아침 첫 배가 들어오고, 세 사람은 각자의 "
+            "방향으로 흩어졌다. 별장은 다시 잠겼고 사건은 서류 더미 속으로 들어갔다.\n\n"
+            f"수집한 결정적 단서: {names}"
+        )
+    elif target == CULPRIT and len(found) >= 2:
+        ending = "TRUE"
+        text = (
+            f"당신은 {SUSPECTS[CULPRIT]['name']}를 지목했다. {names} — 흩어져 있던 조각들이 "
+            "하나의 얼굴로 맞물리는 순간, 그가 더 이상 변명하지 않았다. "
+            "숨기려 했던 것은 살인이 아니라 그 관계였고, 결국 둘 다 드러났다.\n\n"
+            "당신은 진실에 닿았다."
+        )
+    elif target == CULPRIT:
+        ending = "INSUFFICIENT"
+        text = (
+            f"당신은 {SUSPECTS[CULPRIT]['name']}를 지목했다. 그는 표정 하나 바꾸지 않고 "
+            "당신을 마주 본다. 직감은 맞았지만, 그것을 증명할 물증이 손에 없었다.\n\n"
+            f"수집한 결정적 단서: {names} — 최소 두 개가 필요했다.\n"
+            "사건은 미제로 남았다."
+        )
+    else:
+        ending = "WRONG"
+        text = (
+            f"당신은 {SUSPECTS[target]['name']}를 지목했다. 동기는 분명했고 정황도 그럴듯했다. "
+            "그러나 조사가 끝난 뒤, 정말로 밤을 견뎌낸 한 사람은 아무 말 없이 별장을 떠났다.\n\n"
+            f"수집한 결정적 단서: {names}\n"
+            "당신은 엉뚱한 문을 두드렸다."
+        )
+
+    state["game_over"] = True
+    state["ending"] = ending
+    return {"ending": ending, "title": ENDINGS[ending], "text": text}
+
+
+def state_for_prompt(state: dict[str, Any]) -> dict[str, Any]:
+    """LLM에게 전달할 상태 스냅샷(진범 정보는 시스템 프롬프트에만 있다)."""
+    snapshot = copy.deepcopy(state)
+    snapshot["clues_found"] = [
+        {"id": cid, "name": CLUES[cid]["name"], "location": CLUES[cid]["location"]}
+        for cid in state["clues_found"]
+    ]
+    snapshot["unsearched_locations"] = [
+        loc for loc in LOCATIONS if undiscovered_clue_at(state, loc)
+    ]
+    return snapshot

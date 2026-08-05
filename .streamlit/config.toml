@@ -1,0 +1,42 @@
+# 촛불(Candlelight) — 이 게임에 맞춰 직접 만든 테마
+# 그을린 near-black 배경 + 양초 크림색 본문 + 오xblood 주색상 + 황동 액센트
+# 본문/제목에 명조(Noto Serif KR)를 써서 추리소설 지면 느낌을 낸다.
+[theme]
+base = "dark"
+primaryColor = "#8f2f28"
+backgroundColor = "#14110f"
+secondaryBackgroundColor = "#1e1a17"
+codeBackgroundColor = "#1e1a17"
+textColor = "#e8ddc8"
+linkColor = "#d9a94a"
+borderColor = "#3a322a"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "4px"
+buttonRadius = "4px"
+
+font = "'Noto Serif KR':https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600&display=swap"
+headingFont = "'Noto Serif KR':https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+baseFontSize = 15
+baseFontWeight = 400
+codeFontSize = "0.875rem"
+headingFontSizes = ["34px", "24px", "20px", "16px", "14px", "12px"]
+headingFontWeights = [700, 600, 600, 600, 500, 500]
+linkUnderline = false
+
+redColor = "#b5453b"
+greenColor = "#6f8f5f"
+yellowColor = "#c8912f"
+orangeColor = "#c67c39"
+violetColor = "#8d6f9e"
+blueColor = "#6d8394"
+grayColor = "#8a7f70"
+
+[theme.sidebar]
+backgroundColor = "#0f0d0b"
+secondaryBackgroundColor = "#1a1613"
+codeBackgroundColor = "#1a1613"
+textColor = "#d8cdb8"
+borderColor = "#332c25"
+primaryColor = "#8f2f28"

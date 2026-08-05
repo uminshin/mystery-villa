@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# API 키는 절대 커밋하지 않는다. 환경변수로만 주입한다.
+.streamlit/secrets.toml
+.env
+
+# 실행 중 생기는 임시 로그
+out.txt
+err.txt
