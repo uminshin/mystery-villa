@@ -101,25 +101,47 @@ def render_sidebar() -> None:
         st.metric("턴", f"{state['turn']} / {state['max_turns']}")
 
         st.divider()
-        st.caption("의심도")
-        for key, info in gs.SUSPECTS.items():
-            st.progress(state["suspicion"][key] / 100, text=f"{info['name']} — {state['suspicion'][key]}")
 
-        st.caption("신뢰도")
-        for key, info in gs.SUSPECTS.items():
-            st.progress(state["npc_trust"][key] / 100, text=f"{info['name']} — {state['npc_trust'][key]}")
+        # progress bar 6개를 용의자 1행씩 3행 표로 묶었다. 같은 인물의 의심도와
+        # 신뢰도를 나란히 봐야 심문 판단이 되는데, 이전 배치는 두 값이 떨어져 있었다.
+        st.caption("용의자")
+        st.dataframe(
+            [
+                {
+                    "용의자": info["short"],
+                    "의심도": state["suspicion"][key],
+                    "신뢰도": state["npc_trust"][key],
+                }
+                for key, info in gs.SUSPECTS.items()
+            ],
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "용의자": st.column_config.TextColumn(width="small"),
+                "의심도": st.column_config.ProgressColumn(
+                    min_value=0, max_value=100, format="%d", width="small",
+                    help="이 인물이 범인이라는 심증. 조사·심문 결과로 움직인다.",
+                ),
+                "신뢰도": st.column_config.ProgressColumn(
+                    min_value=0, max_value=100, format="%d", width="small",
+                    help="높으면 심문에서 더 많이 털어놓는다. 70 이상이면 숨긴 것까지 흘린다.",
+                ),
+            },
+        )
 
-        st.divider()
         st.caption(f"단서 {len(state['clues_found'])} / {len(gs.CLUES)}")
         if state["clues_found"]:
-            for cid in state["clues_found"]:
-                clue = gs.CLUES[cid]
-                st.write(f"- **{clue['name']}** ({clue['location']})")
+            st.markdown(
+                "\n".join(
+                    f"- **{gs.CLUES[cid]['name']}**  \n  :gray[{gs.CLUES[cid]['location']}]"
+                    for cid in state["clues_found"]
+                )
+            )
         else:
-            st.write("아직 없음")
+            st.caption("아직 없음")
 
         st.divider()
-        if st.button("처음부터 다시", width="stretch"):
+        if st.button("처음부터 다시", icon=":material/restart_alt:", width="stretch"):
             start_new_game()
             st.rerun()
 
