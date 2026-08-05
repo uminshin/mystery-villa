@@ -131,6 +131,20 @@ def _clamp(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
 
 
+# 한 턴에 움직일 수 있는 의심도·신뢰도의 최대 폭.
+# 프롬프트로도 -15~15를 요구하지만 JSON 스키마는 정수 범위를 표현할 수 없어서
+# 코드에서 막는다. 이게 없으면 모델이 +500을 보내면 한 턴에 0->100으로 튄다.
+DELTA_LIMIT = 15
+
+
+def _as_delta(value: Any) -> int:
+    """모델이 보낸 델타를 안전한 정수로 만든다. 이상한 값은 0으로 떨군다."""
+    try:
+        return _clamp(int(value), -DELTA_LIMIT, DELTA_LIMIT)
+    except (TypeError, ValueError):
+        return 0
+
+
 def apply_deltas(
     state: dict[str, Any],
     suspicion_delta: dict[str, int],
@@ -138,10 +152,10 @@ def apply_deltas(
 ) -> None:
     for key in ("A", "B", "C"):
         state["suspicion"][key] = _clamp(
-            state["suspicion"][key] + int(suspicion_delta.get(key, 0)), 0, 100
+            state["suspicion"][key] + _as_delta(suspicion_delta.get(key, 0)), 0, 100
         )
         state["npc_trust"][key] = _clamp(
-            state["npc_trust"][key] + int(trust_delta.get(key, 0)), 0, 100
+            state["npc_trust"][key] + _as_delta(trust_delta.get(key, 0)), 0, 100
         )
 
 
@@ -210,13 +224,18 @@ def accuse(state: dict[str, Any], target: Optional[str]) -> dict[str, Any]:
 
 
 def state_for_prompt(state: dict[str, Any]) -> dict[str, Any]:
-    """LLM에게 전달할 상태 스냅샷(진범 정보는 시스템 프롬프트에만 있다)."""
+    """LLM에게 전달할 상태 스냅샷(진범 정보는 시스템 프롬프트에만 있다).
+
+    미발견 단서가 '어느 장소에' 남았는지는 의도적으로 넣지 않는다. 전달하면
+    나레이션에서 흘릴 수 있어 추리 난이도를 직접 깎는다. 선택지 생성에 실제로
+    필요한 것은 '지금 있는 곳을 조사할 가치가 있는지' 하나뿐이다.
+    """
     snapshot = copy.deepcopy(state)
     snapshot["clues_found"] = [
         {"id": cid, "name": CLUES[cid]["name"], "location": CLUES[cid]["location"]}
         for cid in state["clues_found"]
     ]
-    snapshot["unsearched_locations"] = [
-        loc for loc in LOCATIONS if undiscovered_clue_at(state, loc)
-    ]
+    snapshot["current_location_searchable"] = (
+        undiscovered_clue_at(state, state["location"]) is not None
+    )
     return snapshot

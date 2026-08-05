@@ -13,6 +13,11 @@ from gm import GMError, call_gm
 
 st.set_page_config(page_title="그날 밤, 별장에서", page_icon="🕯️")
 
+OPENING_PROMPT = (
+    "게임을 시작한다. 도입부 나레이션(2~4문장)과 첫 선택지 3개를 제시하라. "
+    "플레이어는 거실에 있다."
+)
+
 
 @st.cache_resource
 def get_client() -> anthropic.Anthropic:
@@ -31,9 +36,13 @@ def start_new_game() -> None:
     st.session_state.error = None
     st.session_state.found = None
     st.session_state.ending = None
+    st.session_state.pending_input = None
 
 
 def request_gm(player_input: str) -> None:
+    # 실패 시 이 프롬프트를 그대로 재전송해야 한다. call_gm은 성공할 때만 히스토리를
+    # 돌려주므로 히스토리에서 되짚을 수 없다(그러면 오프닝이 재전송된다).
+    st.session_state.pending_input = player_input
     try:
         gm, history = call_gm(
             get_client(),
@@ -58,6 +67,7 @@ def request_gm(player_input: str) -> None:
         return
 
     st.session_state.error = None
+    st.session_state.pending_input = None
     st.session_state.history = history
     st.session_state.gm = gm
     gs.apply_deltas(st.session_state.state, gm["suspicion_delta"], gm["trust_delta"])
@@ -119,21 +129,17 @@ def render_play() -> None:
 
     if st.session_state.gm is None and st.session_state.error is None:
         with st.spinner("별장의 첫 밤이 시작된다…"):
-            request_gm(
-                "게임을 시작한다. 도입부 나레이션(2~4문장)과 첫 선택지 3개를 제시하라. "
-                "플레이어는 거실에 있다."
-            )
+            request_gm(OPENING_PROMPT)
         st.rerun()
 
     if st.session_state.error:
         st.error(st.session_state.error)
-        if st.button("다시 시도"):
-            last = st.session_state.history[-1] if st.session_state.history else None
-            if last and last["role"] == "user":
-                st.session_state.history = st.session_state.history[:-1]
-                request_gm(last["content"].split("\n\n[현재 상태]")[0])
-            else:
-                request_gm("게임을 시작한다. 도입부 나레이션과 첫 선택지 3개를 제시하라.")
+        st.caption(
+            "턴과 단서는 이미 반영되어 있습니다. 재시도하면 같은 행동의 나레이션만 다시 받습니다."
+        )
+        if st.button("다시 시도", icon=":material/refresh:"):
+            with st.spinner("…"):
+                request_gm(st.session_state.pending_input or OPENING_PROMPT)
             st.rerun()
         return
 
@@ -174,6 +180,15 @@ def render_accuse() -> None:
         "밤이 끝났다. 폭풍이 잦아들고 아침 배가 들어온다. "
         "지금 한 명을 지목해야 한다."
     )
+
+    # 마지막 턴에 GM 호출이 실패하면 그 턴의 나레이션 없이 여기로 넘어온다.
+    # 조용히 삼키면 플레이어는 이유를 모르므로 남은 단서 기준으로 안내한다.
+    if st.session_state.error:
+        st.warning(
+            f"마지막 행동의 나레이션을 받지 못했습니다 — {st.session_state.error}\n\n"
+            "수집한 단서는 사이드바에 그대로 남아 있으니 그것을 근거로 지목하세요."
+        )
+
     st.divider()
 
     # 되돌릴 수 없는 마지막 결정이므로 세 용의자 모두 primary로 강조하고,
