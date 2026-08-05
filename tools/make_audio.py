@@ -28,6 +28,7 @@ LEVELS = {
     "interrogate": 0.50,
     "search": 0.30,
     "move": 0.62,
+    "clue": 0.44,
 }
 
 
@@ -186,6 +187,48 @@ def metronome() -> np.ndarray:
     return normalize(total, LEVELS["interrogate"])
 
 
+def clue_chime() -> np.ndarray:
+    """단서 발견음. 작은 종을 한 번 치는 소리.
+
+    종이 종처럼 들리는 이유는 배음이 정수배가 아니기 때문이다(비조화 배음).
+    사인파를 2배·3배로 쌓으면 오르간이 되고, 아래 비율로 쌓으면 종이 된다.
+    낮은 배음은 길게, 높은 배음은 짧게 감쇠시켜 '뎅' 하고 남는 여운을 만든다.
+    """
+    seconds = 1.6
+    count = int(RATE * seconds)
+    time = np.arange(count) / RATE
+    fundamental = 588.0
+
+    # (주파수 비율, 세기, 감쇠) — 실제 종의 부분음 비율에 가깝게
+    partials = [
+        (0.50, 0.30, 1.8),
+        (1.00, 1.00, 2.2),
+        (2.00, 0.42, 3.4),
+        (2.76, 0.30, 4.6),
+        (5.40, 0.16, 7.0),
+        (8.93, 0.08, 9.5),
+    ]
+    total = np.zeros(count)
+    for ratio, level, decay in partials:
+        total += np.sin(2 * np.pi * fundamental * ratio * time) * level * np.exp(
+            -time * decay
+        )
+
+    # 때리는 순간의 금속성 잡음. 없으면 삼각파 같은 전자음이 된다.
+    strike = int(RATE * 0.05)
+    st_time = np.arange(strike) / RATE
+    total[:strike] += (
+        spectral_noise(0.05, alpha=0.3, cutoff_hz=8000, highpass_hz=1500)[:strike]
+        * np.exp(-st_time * 150.0)
+        * 2.0
+    )
+
+    # 아주 짧은 페이드인으로 딸깍하는 클릭을 없앤다
+    ramp = int(RATE * 0.002)
+    total[:ramp] *= np.linspace(0.0, 1.0, ramp)
+    return normalize(total, LEVELS["clue"])
+
+
 def rustle() -> np.ndarray:
     """조사음. 종이를 넘기며 스치는 소리.
 
@@ -222,6 +265,7 @@ def main() -> None:
     write_wav("interrogate.wav", metronome())
     write_wav("move.wav", door())
     write_wav("search.wav", rustle())
+    write_wav("clue.wav", clue_chime())
     print("완료")
 
 

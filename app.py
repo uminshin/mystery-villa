@@ -179,7 +179,22 @@ def render_bgm() -> None:
         st.audio(data, format="audio/wav", loop=True, autoplay=True)
 
 
-def play_action_sound(slot, action: str) -> None:
+def sound_for_choice(state: dict, choice: dict[str, str]) -> str:
+    """이 행동에 어떤 소리를 낼지 고른다.
+
+    단서가 나올지는 클릭 시점에 이미 정해져 있다(조사할 장소에 미발견 단서가
+    있는지 보면 된다). 그래서 발견음을 나레이션이 끝난 뒤로 미루지 않고
+    누른 즉시 울릴 수 있다. 단서가 나오는 조사는 종소리로 대체한다 —
+    종이 스치는 소리와 겹치면 둘 다 흐려진다.
+    """
+    if choice["action"] == "조사" and gs.undiscovered_clue_at(
+        state, state["location"]
+    ):
+        return "clue.wav"
+    return ACTION_SOUNDS.get(choice["action"], "")
+
+
+def play_sound(slot, name: str) -> None:
     """버튼을 누른 즉시 효과음을 재생한다.
 
     이전에는 다음 rerun에서 오디오 요소를 만들었기 때문에 나레이션이 다 나온
@@ -188,7 +203,7 @@ def play_action_sound(slot, action: str) -> None:
     """
     if not st.session_state.get("sound_on"):
         return
-    data = load_audio(ACTION_SOUNDS.get(action, ""))
+    data = load_audio(name)
     if data is None:
         return
     slot.audio(data, format="audio/wav", autoplay=True)
@@ -760,7 +775,8 @@ def render_play() -> None:
                     ):
                         # 순서가 중요하다: 소리를 먼저 붙여 즉시 재생시키고,
                         # 지난 턴 흔적(단서·선택지)을 걷어낸 뒤 스트리밍을 시작한다.
-                        play_action_sound(sound_slot, choice["action"])
+                        # 소리 선택은 state가 바뀌기 전에 해야 한다.
+                        play_sound(sound_slot, sound_for_choice(state, choice))
                         clue_slot.empty()
                         choice_slot.empty()
                         narration_slot.markdown(":gray[…]")
