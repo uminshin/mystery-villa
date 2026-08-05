@@ -1,0 +1,44 @@
+<svg viewBox="0 0 800 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="미제 — 세 사람이 각자 다른 방향으로 흩어지고, 잠긴 별장과 서류 상자만 남는다">
+  <rect width="800" height="260" fill="#14110f"/>
+  <path d="M0 40 H800 V210 H0 Z" fill="#181411"/>
+  <circle cx="150" cy="72" r="40" fill="#e8ddc8" opacity="0.05"/>
+
+  <path d="M0 210 H800 V260 H0 Z" fill="#1c1815"/>
+  <path d="M0 210 H800" stroke="#3a322a" stroke-width="2"/>
+
+  <g stroke="#3a322a" stroke-width="2" fill="#1a1613">
+    <path d="M330 210 v-84 l70 -44 l70 44 v84 z"/>
+    <rect x="382" y="164" width="36" height="46"/>
+  </g>
+  <circle cx="400" cy="187" r="5" fill="#d9a94a" opacity="0.55"/>
+  <path d="M392 132 h16" stroke="#3a322a" stroke-width="2"/>
+
+  <g fill="#241f1a" stroke="#4a4038" stroke-width="2">
+    <circle cx="120" cy="150" r="12"/>
+    <path d="M120 162 v32 M120 172 l-16 12 M120 172 l16 12 M120 194 l-10 24 M120 194 l10 24"/>
+  </g>
+  <g fill="#241f1a" stroke="#4a4038" stroke-width="2">
+    <circle cx="640" cy="152" r="12"/>
+    <path d="M640 164 v32 M640 174 l-16 12 M640 174 l16 12 M640 196 l-10 22 M640 196 l10 22"/>
+  </g>
+  <g fill="#241f1a" stroke="#4a4038" stroke-width="2" opacity="0.75">
+    <circle cx="716" cy="158" r="11"/>
+    <path d="M716 169 v28 M716 178 l-14 11 M716 178 l14 11 M716 197 l-9 20 M716 197 l9 20"/>
+  </g>
+
+  <g stroke="#5f564a" stroke-width="2" stroke-dasharray="6 7" fill="none" opacity="0.65">
+    <path d="M96 206 H30"/>
+    <path d="M668 208 H760"/>
+  </g>
+
+  <g stroke="#3a322a" stroke-width="2" fill="#1e1a17">
+    <rect x="200" y="176" width="66" height="34" rx="2"/>
+    <path d="M200 188 H266"/>
+  </g>
+  <g fill="#e8ddc8" opacity="0.18">
+    <rect x="212" y="160" width="40" height="18" transform="rotate(-7 212 160)"/>
+  </g>
+  <text x="233" y="228" fill="#8a7f70" font-family="serif" font-size="10" text-anchor="middle">미제</text>
+
+  <text x="400" y="30" fill="#8a7f70" font-family="serif" font-size="12" text-anchor="middle">별장은 다시 잠겼다</text>
+</svg>

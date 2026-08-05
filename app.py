@@ -114,11 +114,19 @@ def render_map(location: str) -> None:
     svg_block(svg, "villa-map", "440 / 340", fit="contain", max_width="360px")
 
 
-def render_victim_portrait() -> None:
-    svg = load_svg("victim")
+def render_crime_scene() -> None:
+    """사건 현장 도면. 어디서 어떤 자세로 쓰러졌는지 보여준다."""
+    svg = load_svg("crime-scene")
     if svg is not None:
-        # 증명사진 크기로 묶어 둔다. 와이드 레이아웃에서 그냥 두면 카드를 삼킨다.
-        svg_block(svg, "villa-victim", "180 / 240", fit="contain", max_width="132px")
+        svg_block(svg, "villa-scene", "420 / 300", fit="contain", max_width="420px")
+
+
+def render_ending_art(slug: str | None) -> None:
+    if not slug:
+        return
+    svg = load_svg(slug)
+    if svg is not None:
+        svg_block(svg, f"villa-{slug}", "800 / 260", max_width="46rem")
 
 
 def render_location_art(location: str) -> None:
@@ -171,21 +179,19 @@ def render_bgm() -> None:
         st.audio(data, format="audio/wav", loop=True, autoplay=True)
 
 
-def render_action_sound() -> None:
-    """직전 행동의 효과음을 한 번 재생한다.
+def play_action_sound(slot, action: str) -> None:
+    """버튼을 누른 즉시 효과음을 재생한다.
 
-    키에 턴과 행동을 넣어, 행동이 바뀔 때만 새 요소가 만들어지며 재생된다.
+    이전에는 다음 rerun에서 오디오 요소를 만들었기 때문에 나레이션이 다 나온
+    뒤에야 소리가 났다. 클릭 시점에 넘겨받은 슬롯에 바로 그려서 붙는 즉시
+    재생되게 한다.
     """
     if not st.session_state.get("sound_on"):
         return
-    last = st.session_state.get("last_sound")
-    if not last:
-        return
-    data = load_audio(ACTION_SOUNDS.get(last["action"], ""))
+    data = load_audio(ACTION_SOUNDS.get(action, ""))
     if data is None:
         return
-    with st.container(key=f"sfx-{last['seq']}"):
-        st.audio(data, format="audio/wav", autoplay=True)
+    slot.audio(data, format="audio/wav", autoplay=True)
 
 
 def inject_css() -> None:
@@ -247,8 +253,25 @@ def inject_css() -> None:
 
         /* 나레이션 한 줄이 너무 길어지면 눈이 되돌아올 자리를 잃는다.
            한글 본문은 한 줄 40자 안쪽이 읽기 편하다. */
-        .st-key-narration, .st-key-briefing {{
+        .st-key-narration, .st-key-briefing, .st-key-ending-story {{
             max-width: 46rem;
+        }}
+        .st-key-ending-story p {{
+            font-size: 1.08rem;
+            line-height: 1.85;
+        }}
+
+        /* 브리핑 인물표: 캔버스 기반 dataframe과 달리 글자 크기를 키울 수 있다 */
+        .st-key-people-table table {{
+            font-size: 1.02rem;
+        }}
+        .st-key-people-table th {{
+            font-size: 0.94rem;
+            color: #8a7f70;
+        }}
+        .st-key-people-table td {{
+            padding-top: 0.55rem;
+            padding-bottom: 0.55rem;
         }}
 
         @media (prefers-reduced-motion: reduce) {{
@@ -282,11 +305,11 @@ def start_new_game() -> None:
     st.session_state.ending = None
     st.session_state.pending_input = None
     st.session_state.log = []
-    # 용의자별로 메모를 나눈다. 알리바이를 인물 단위로 적어야 대조가 된다.
-    for key in gs.SUSPECTS:
-        st.session_state[f"notes_{key}"] = ""
-    st.session_state.last_sound = None
-    st.session_state.sound_seq = 0
+    # 메모는 위젯 키에 묶여 있어서 여기서 ""를 대입하면
+    # "cannot be modified after the widget is instantiated" 예외가 난다
+    # (리셋 버튼이 노트보다 뒤에 그려지므로 항상 그 상황이다).
+    # 대신 판 번호를 올려 키 자체를 새로 만든다 — 새 위젯이라 값이 비어 있다.
+    st.session_state.game_id = st.session_state.get("game_id", 0) + 1
     # sound_on은 위젯 키라서 여기서 건드리지 않는다. 위젯이 이미 그려진 뒤에
     # 대입하면 Streamlit이 예외를 던지고, 소리 설정은 판을 넘겨 유지되는 편이 낫다.
 
@@ -340,12 +363,6 @@ def take_action(choice: dict[str, str], narration_slot=None) -> None:
         gs.advance_turn(state)
     st.session_state.found = found
 
-    st.session_state.sound_seq += 1
-    st.session_state.last_sound = {
-        "action": choice["action"],
-        "seq": st.session_state.sound_seq,
-    }
-
     outcome = f"발견한 단서: {found['name']} — {found['detail']}" if found else "새로 발견한 단서: 없음"
     cost = "1턴 소모" if spent else "턴 소모 없음(이동)"
     request_gm(
@@ -374,17 +391,27 @@ def take_action(choice: dict[str, str], narration_slot=None) -> None:
 
 
 def render_case_file() -> None:
-    """수사 기록 — 용의자 → 단서 → 탐정 노트를 위에서 아래로 쌓는다.
+    """수사 기록 — 용의자 / 단서 / 탐정 노트를 탭으로 나눈다.
 
-    탭으로 접어두면 진술을 대조할 때마다 탭을 옮겨야 해서, 세 블록을 모두
-    펼쳐 둔다. 메모가 길어질 수 있어 노트를 맨 아래로 뒀다.
+    세 블록을 다 펼쳐 두면 한눈에 보기는 좋지만 세로로 길어져 오갈 때 스크롤이
+    생긴다. 탭이면 클릭 한 번으로 바로 그 면이 나온다.
     """
     state = st.session_state.state
+    suspects_tab, clues_tab, notes_tab = st.tabs(
+        ["용의자", f"단서 {len(state['clues_found'])} / {len(gs.CLUES)}", "탐정 노트"]
+    )
 
-    # ── 용의자 ────────────────────────────────────────────
+    with suspects_tab:
+        _render_suspects(state)
+    with clues_tab:
+        _render_clues(state)
+    with notes_tab:
+        _render_notes()
+
+
+def _render_suspects(state: dict) -> None:
     # progress bar 6개를 용의자 1행씩 3행 표로 묶었다. 같은 인물의 의심도와
     # 신뢰도를 나란히 봐야 심문 판단이 되는데, 이전 배치는 두 값이 떨어져 있었다.
-    st.markdown("###### 용의자")
     st.dataframe(
         [
             {
@@ -415,12 +442,9 @@ def render_case_file() -> None:
         },
     )
 
-    # ── 단서 ──────────────────────────────────────────────
-    found_this_turn = st.session_state.found is not None
-    count_key = f"clue-count-hit-{state['turn']}" if found_this_turn else "clue-count"
-    with st.container(key=count_key):
-        st.markdown(f"###### 단서 {len(state['clues_found'])} / {len(gs.CLUES)}")
 
+def _render_clues(state: dict) -> None:
+    found_this_turn = st.session_state.found is not None
     if state["clues_found"]:
         for index, cid in enumerate(state["clues_found"]):
             clue = gs.CLUES[cid]
@@ -432,10 +456,10 @@ def render_case_file() -> None:
     else:
         st.caption("아직 없음")
 
-    # ── 탐정 노트 ─────────────────────────────────────────
+
+def _render_notes() -> None:
     # 자동 기록 + 인물별 메모. 알리바이의 앞뒤를 맞추려면 "누가 몇 시에 뭘 했다"를
     # 어딘가에 적어둬야 하는데, 그걸 게임 밖 종이에 적게 만들 이유가 없다.
-    st.markdown("###### 탐정 노트")
     if st.session_state.log:
         st.dataframe(
             [
@@ -459,10 +483,11 @@ def render_case_file() -> None:
     else:
         st.caption("아직 기록이 없습니다.")
 
+    game_id = st.session_state.get("game_id", 0)
     for key, info in gs.SUSPECTS.items():
         st.text_area(
             info["name"],
-            key=f"notes_{key}",
+            key=f"notes_{game_id}_{key}",
             height=104,
             placeholder=f"{info['short']}의 진술과 모순을 적어두세요.\n예) 23:00 취침 주장",
         )
@@ -487,53 +512,47 @@ def render_start() -> None:
         )
 
     st.write("")
-    st.markdown("###### 피해자")
-    with st.container(border=True):
-        info_col, photo_col = st.columns([3, 1], gap="medium", vertical_alignment="top")
-        with info_col:
+    facts, scene = st.columns([2, 3], gap="large", vertical_alignment="top")
+
+    with facts:
+        st.markdown("###### 피해자")
+        # width="content"로 두면 테두리가 글자 폭까지만 감싼다.
+        with st.container(border=True, width="content"):
             st.markdown(f"**{gs.VICTIM}**")
             st.markdown(
                 f":gray[사인] {gs.CAUSE_OF_DEATH}  \n"
                 f":gray[사망 추정] **{gs.TIME_OF_DEATH}**  \n"
                 f":gray[발견] {gs.DISCOVERY}"
             )
-        with photo_col:
-            render_victim_portrait()
 
-    st.write("")
-    st.markdown("###### 그날 밤의 시각")
-    with st.container(border=True):
-        st.markdown(
-            "  \n".join(
-                f"**{when}** · {what}"
-                if when == gs.TIME_OF_DEATH
-                else f":gray[{when}] {what}"
-                for when, what in gs.TIMELINE
+        st.markdown("###### 그날 밤의 시각")
+        with st.container(border=True, width="content"):
+            st.markdown(
+                "  \n".join(
+                    f"**{when}** · {what}"
+                    if when == gs.TIME_OF_DEATH
+                    else f":gray[{when}] {what}"
+                    for when, what in gs.TIMELINE
+                )
             )
-        )
+
+    with scene:
+        st.markdown("###### 사건 현장")
+        render_crime_scene()
 
     st.write("")
     st.markdown("###### 별장에 남은 세 사람")
-    st.dataframe(
-        [
-            {
-                "인물": info["name"],
-                "성별": info["gender"],
-                "나이": info["age"],
-                "피해자와의 관계": info["relation"],
-            }
+    # dataframe은 캔버스로 그려서 글자 크기를 CSS로 못 키운다.
+    # 진행에 따라 값이 바뀌지 않는 표라서 마크다운으로 그리고 CSS로 확대한다.
+    with st.container(key="people-table"):
+        rows = "\n".join(
+            f"| {info['name']} | {info['gender']} | {info['age']} | {info['relation']} |"
             for info in gs.SUSPECTS.values()
-        ],
-        hide_index=True,
-        width="stretch",
-        # 픽셀로 고정한다. 내용 길이에 따라 폭이 흔들리면 표가 산만해진다.
-        column_config={
-            "인물": st.column_config.TextColumn(width=170),
-            "성별": st.column_config.TextColumn(width=60),
-            "나이": st.column_config.TextColumn(width=60),
-            "피해자와의 관계": st.column_config.TextColumn(width=400),
-        },
-    )
+        )
+        st.markdown(
+            "| 인물 | 성별 | 나이 | 피해자와의 관계 |\n"
+            "| --- | --- | --- | --- |\n" + rows
+        )
 
     st.write("")
     st.markdown("###### 수사 규칙")
@@ -681,22 +700,21 @@ def render_play() -> None:
             st.markdown(f"# {state['location']}")
         render_location_art(state["location"])
 
-        remaining = state["max_turns"] - state["turn"]
-        with st.container(key="turns-low" if remaining <= 3 else "turns"):
-            st.caption(
-                f"남은 턴 {remaining}"
-                + ("  · 시간이 얼마 없다" if 0 < remaining <= 3 else "")
-            )
+        # 효과음이 붙을 자리. 클릭 시점에 여기에 바로 그려서 즉시 재생한다.
+        sound_slot = st.empty()
 
         # 이 자리에 다음 턴 나레이션이 스트리밍으로 덮어쓰인다.
         with st.container(key="narration"):
             narration_slot = st.empty()
             narration_slot.markdown(gm["narration"])
 
+        # 단서 카드는 별도 슬롯에 둔다. 다음 행동을 고르는 순간 비워야
+        # 스트리밍되는 새 나레이션 옆에 지난 턴 단서가 남아 있지 않다.
+        clue_slot = st.empty()
         if st.session_state.found:
             found = st.session_state.found
             inject_clue_background(found["location"])
-            with st.container(border=True, key="clue-card"):
+            with clue_slot.container(border=True, key="clue-card"):
                 st.badge("단서 획득", icon=":material/bookmark:", color="orange")
                 st.markdown(f"**{found['name']}**")
                 st.caption(found["detail"])
@@ -721,17 +739,27 @@ def render_play() -> None:
                 icon=":material/hourglass_bottom:",
             )
         else:
-            st.caption("이동은 턴을 소모하지 않습니다. 조사와 심문만 1턴.")
-            for index, choice in enumerate(gm["choices"]):
-                if st.button(
-                    choice["label"],
-                    icon=ACTION_ICONS.get(choice["action"]),
-                    key=f"choice-{state['turn']}-{index}-{choice['action']}-{choice['target']}",
-                    width="stretch",
-                ):
-                    narration_slot.markdown(":gray[…]")
-                    take_action(choice, narration_slot=narration_slot)
-                    st.rerun()
+            # 선택지 전체를 한 슬롯에 담아 두고, 클릭 순간 그 슬롯을 비운다.
+            # 그러지 않으면 새 나레이션이 흘러나오는 동안 지난 턴 버튼이 남아
+            # 두 번 눌릴 수 있다.
+            choice_slot = st.empty()
+            with choice_slot.container():
+                st.caption("이동은 턴을 소모하지 않습니다. 조사와 심문만 1턴.")
+                for index, choice in enumerate(gm["choices"]):
+                    if st.button(
+                        choice["label"],
+                        icon=ACTION_ICONS.get(choice["action"]),
+                        key=f"choice-{state['turn']}-{index}-{choice['action']}-{choice['target']}",
+                        width="stretch",
+                    ):
+                        # 순서가 중요하다: 소리를 먼저 붙여 즉시 재생시키고,
+                        # 지난 턴 흔적(단서·선택지)을 걷어낸 뒤 스트리밍을 시작한다.
+                        play_action_sound(sound_slot, choice["action"])
+                        clue_slot.empty()
+                        choice_slot.empty()
+                        narration_slot.markdown(":gray[…]")
+                        take_action(choice, narration_slot=narration_slot)
+                        st.rerun()
 
         # 턴이 남았어도 눈치챘으면 바로 지목할 수 있게 한다.
         st.write("")
@@ -803,8 +831,17 @@ def render_accuse() -> None:
 def render_ending() -> None:
     ending = st.session_state.ending
     st.markdown(f"# {ending['title']}")
+    render_ending_art(ending.get("art"))
     with st.container(key="narration"):
         st.markdown(ending["text"])
+
+    # 동기는 정답 엔딩에서만 온다. 왜 그랬는지가 없으면 결말이 심심하다.
+    if ending.get("story"):
+        st.write("")
+        st.markdown("###### 그날 밤, 무슨 일이 있었나")
+        with st.container(border=True, key="ending-story"):
+            st.markdown(ending["story"])
+
     st.divider()
     if st.button(
         "다시 플레이", icon=":material/restart_alt:", type="primary", width="stretch"
@@ -829,7 +866,6 @@ phase = st.session_state.phase
 # 자동재생을 막으므로 홈 화면에서는 아예 만들지 않는다.
 if phase not in ("home", "briefing"):
     render_bgm()
-    render_action_sound()
 
 if phase == "home":
     render_home()

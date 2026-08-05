@@ -1,0 +1,53 @@
+<svg viewBox="0 0 420 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="사건 현장 도면 — 서재. 책상 앞 바닥에 엎어진 자세로 쓰러진 피해자, 옆에 떨어진 둔기와 흩어진 서류">
+  <rect width="420" height="300" fill="#14110f"/>
+
+  <g stroke="#4a4038" stroke-width="6" fill="none">
+    <path d="M24 40 H396 V264 H24 Z"/>
+  </g>
+  <path d="M24 220 H150" stroke="#14110f" stroke-width="9"/>
+
+  <g stroke="#3a322a" stroke-width="2" fill="#1c1815">
+    <rect x="40" y="52" width="26" height="150"/>
+    <path d="M40 92 H66 M40 132 H66 M40 172 H66"/>
+  </g>
+
+  <g stroke="#3a322a" stroke-width="2" fill="#1e1a17">
+    <rect x="236" y="70" width="140" height="58" rx="2"/>
+    <path d="M252 128 v40 M360 128 v40"/>
+  </g>
+  <g stroke="#3a322a" stroke-width="1.5" fill="#241f1a">
+    <rect x="300" y="176" width="46" height="40" rx="3"/>
+  </g>
+
+  <g fill="#e8ddc8" opacity="0.2">
+    <rect x="176" y="176" width="34" height="24" transform="rotate(-16 176 176)"/>
+    <rect x="214" y="196" width="30" height="22" transform="rotate(9 214 196)"/>
+    <rect x="150" y="214" width="26" height="20" transform="rotate(-6 150 214)"/>
+  </g>
+
+  <ellipse cx="196" cy="242" rx="62" ry="20" fill="#8f2f28" opacity="0.16"/>
+
+  <g fill="#2c2621" stroke="#5a4f42" stroke-width="2">
+    <ellipse cx="150" cy="238" rx="15" ry="13"/>
+    <path d="M164 232 q34 -10 62 4 q10 4 8 14 q-2 10 -14 8 q-30 -6 -56 -10 z"/>
+    <path d="M226 240 q22 6 30 20" fill="none"/>
+    <path d="M172 246 q16 16 12 30" fill="none"/>
+    <path d="M206 250 q8 18 22 24" fill="none"/>
+  </g>
+
+  <g stroke="#d9a94a" stroke-width="2" fill="#241f1a" opacity="0.9">
+    <rect x="258" y="228" width="40" height="9" rx="4" transform="rotate(14 258 228)"/>
+  </g>
+  <text x="292" y="256" fill="#d9a94a" font-family="serif" font-size="10" opacity="0.85">둔기</text>
+
+  <g stroke="#5f564a" stroke-width="1.5" fill="none" opacity="0.8">
+    <path d="M150 224 L150 210 M226 236 L240 222"/>
+  </g>
+
+  <g fill="#8a7f70" font-family="serif" font-size="11">
+    <text x="34" y="30">서재 · 사건 현장</text>
+    <text x="248" y="64" font-size="10">책상</text>
+    <text x="34" y="212" font-size="10" opacity="0.85">출입문</text>
+  </g>
+  <text x="196" y="284" fill="#b5453b" font-family="serif" font-size="11" text-anchor="middle">피해자 · 엎어진 자세, 후두부 손상</text>
+</svg>

@@ -45,7 +45,8 @@ SUSPECTS = {
 }
 
 # 사건 개요. 시작 화면과 시스템 프롬프트가 같은 값을 쓴다.
-VICTIM = "별장 주인 — 윤성호, 60대 남성"
+# 이름을 쓰지 않는다 — 플레이어에게는 '피해자'라는 역할이 먼저 읽혀야 한다.
+VICTIM = "별장 주인 · 60대 남성"
 TIME_OF_DEATH = "23:40 전후"
 CAUSE_OF_DEATH = "서재에서 둔기에 의한 후두부 손상"
 DISCOVERY = "00:10, 비서 C가 시신을 발견하고 사람들을 불러모았다"
@@ -122,6 +123,38 @@ LOCATION_ART = {
     "금고실": "vault",
     "다락방": "attic",
 }
+
+# 층 구성. 평면도(assets/locations/map.svg)와 반드시 일치해야 한다.
+# 같은 층 사이를 "올라간다/내려간다"로 표현하면 공간 감각이 깨지므로
+# 나레이션이 이 표를 참고한다.
+FLOORS = {
+    "다락방": "2층",
+    "서재": "2층",
+    "거실": "1층",
+    "침실": "1층",
+    "금고실": "지하",
+    "정원": "옥외",
+}
+
+# 층 사이의 상하 관계. 이동 방향을 문장으로 고를 때 쓴다.
+FLOOR_ORDER = {"2층": 2, "1층": 1, "지하": 0, "옥외": 1}
+
+
+def move_direction(origin: str, destination: str) -> str:
+    """두 장소 사이 이동을 어떤 동작으로 불러야 하는지 돌려준다."""
+    here, there = FLOORS.get(origin), FLOORS.get(destination)
+    if here is None or there is None:
+        return "이동"
+    if there == "옥외" and here != "옥외":
+        return "밖으로 나간다"
+    if here == "옥외" and there != "옥외":
+        return "안으로 들어간다"
+    high, low = FLOOR_ORDER.get(there, 1), FLOOR_ORDER.get(here, 1)
+    if high > low:
+        return "올라간다"
+    if high < low:
+        return "내려간다"
+    return "같은 층에서 옮긴다"
 
 
 def new_state() -> dict[str, Any]:
@@ -256,11 +289,31 @@ def weak_evidence_warnings(state: dict[str, Any]) -> list[tuple[str, int]]:
 
 
 ENDINGS = {
-    "TRUE": "정답 엔딩 · 진실",
-    "INSUFFICIENT": "미제사건 엔딩 · 증거 불충분",
-    "WRONG": "오답 엔딩 · 잘못된 확신",
-    "COLD_CASE": "미제사건 엔딩 · 침묵",
+    "TRUE": "범인 검거",
+    "INSUFFICIENT": "증거 불충분 · 석방",
+    "WRONG": "오심",
+    "COLD_CASE": "미제 사건",
 }
+
+# 엔딩별 삽화(assets/locations/<slug>.svg).
+# 실패 계열 셋은 결과가 같으므로(사건이 닫히지 않는다) 한 장을 공유한다.
+ENDING_ART = {
+    "TRUE": "ending-arrest",
+    "INSUFFICIENT": "ending-unsolved",
+    "WRONG": "ending-unsolved",
+    "COLD_CASE": "ending-unsolved",
+}
+
+# 진범의 동기. 정답 엔딩에서만 공개한다.
+CULPRIT_STORY = (
+    "3년이었다. 비서는 피해자의 일정과 서류를, 그리고 그 관계를 함께 관리했다.\n\n"
+    "그날 저녁 피해자는 관계를 끝내겠다고 통보했다. 정리 조건은 침묵이었다. "
+    "서재 금고에는 이미 그녀를 배제한 새 서류가 들어가 있었다.\n\n"
+    "23:20, 비가 그쳤다. 그녀는 정원 창고에서 문진을 가져와 서재로 올라갔고, "
+    "돌아오는 길에 젖은 흙에 발자국을 남겼다. 다락방에서 사진을 태웠지만 "
+    "불은 얼굴 하나만 그슬리고 꺼졌다.\n\n"
+    "00:10, 그녀는 시신을 '발견했다'. 가장 먼저 달려와 가장 오래 울었다."
+)
 
 
 def accuse(state: dict[str, Any], target: Optional[str]) -> dict[str, Any]:
@@ -300,9 +353,19 @@ def accuse(state: dict[str, Any], target: Optional[str]) -> dict[str, Any]:
             "당신은 엉뚱한 문을 두드렸다."
         )
 
+    # 정답에 닿았을 때만 동기를 공개한다. 나머지 엔딩에서는 왜 그랬는지
+    # 끝까지 알 수 없어야 다시 플레이할 이유가 생긴다.
+    story = CULPRIT_STORY if ending == "TRUE" else None
+
     state["game_over"] = True
     state["ending"] = ending
-    return {"ending": ending, "title": ENDINGS[ending], "text": text}
+    return {
+        "ending": ending,
+        "title": ENDINGS[ending],
+        "text": text,
+        "story": story,
+        "art": ENDING_ART.get(ending),
+    }
 
 
 def state_for_prompt(state: dict[str, Any]) -> dict[str, Any]:

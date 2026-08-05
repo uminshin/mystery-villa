@@ -20,12 +20,29 @@ RATE = 22050
 OUT_DIR = Path(__file__).resolve().parent.parent / "assets" / "audio"
 RNG = np.random.default_rng(20260806)  # 결과를 재현 가능하게 고정
 
+# 소리별 최종 피크. 플레이 테스트 기준으로 심문(메트로놈)이 적당했고,
+# 조사는 컸고 이동은 거의 안 들렸다. 그 셋을 심문에 맞춰 다시 잡은 값이다.
+# 배경음은 나레이션을 읽는 데 방해되지 않을 만큼 낮춘다.
+LEVELS = {
+    "rain": 0.40,
+    "interrogate": 0.50,
+    "search": 0.30,
+    "move": 0.62,
+}
 
-def spectral_noise(seconds: float, alpha: float, cutoff_hz: float) -> np.ndarray:
-    """1/f^alpha 기울기 + 저역 통과를 걸어 성형한 노이즈.
+
+def spectral_noise(
+    seconds: float,
+    alpha: float,
+    cutoff_hz: float,
+    highpass_hz: float | None = None,
+) -> np.ndarray:
+    """1/f^alpha 기울기에 저역 통과(+선택적 고역 통과)를 걸어 성형한 노이즈.
 
     scipy 없이 필터를 쓰려고 주파수 영역에서 바로 곱한다.
     alpha가 크면 낮은 주파수가 강해져(=브라운 노이즈) 먹먹한 소리가 된다.
+    highpass_hz를 주면 그 아래를 깎아 대역 통과가 된다 — 1/f 기울기만으로는
+    에너지가 죄다 저역에 쌓여서 원하는 음색이 나오지 않는다.
     """
     count = int(RATE * seconds)
     spectrum = np.fft.rfft(RNG.standard_normal(count))
@@ -35,6 +52,10 @@ def spectral_noise(seconds: float, alpha: float, cutoff_hz: float) -> np.ndarray
     shape[nonzero] = 1.0 / np.power(freqs[nonzero], alpha)
     shape[0] = 0.0  # DC 제거
     shape *= 1.0 / (1.0 + np.power(freqs / cutoff_hz, 2.0))
+    if highpass_hz:
+        ratio = np.zeros_like(freqs)
+        ratio[nonzero] = highpass_hz / freqs[nonzero]
+        shape *= 1.0 / (1.0 + np.power(ratio, 4.0))
     return np.fft.irfft(spectrum * shape, n=count)
 
 
@@ -56,20 +77,43 @@ def loop_seamlessly(signal: np.ndarray, fade_seconds: float = 0.6) -> np.ndarray
     return np.concatenate([blended, signal[fade:-fade]])
 
 
+def droplets(seconds: float, count: int, low: float, high: float) -> np.ndarray:
+    """물방울이 튀는 개별 트랜지언트. 노이즈만으로는 '쉬익' 하는
+    잡음처럼 들려서, 알갱이가 들리도록 짧은 충격을 흩뿌린다."""
+    total = np.zeros(int(RATE * seconds))
+    length = int(RATE * 0.05)
+    envelope = np.exp(-np.arange(length) / RATE * 190.0)
+    positions = RNG.integers(0, len(total) - length, size=count)
+    pitches = RNG.uniform(low, high, size=count)
+    levels = RNG.uniform(0.25, 1.0, size=count)
+    time = np.arange(length) / RATE
+    for start, pitch, level in zip(positions, pitches, levels):
+        grain = np.sin(2 * np.pi * pitch * time) * envelope * level
+        total[start : start + length] += grain
+    return total
+
+
 def rain() -> np.ndarray:
-    """폭우 보량음. 굵은 빗줄기 + 창을 때리는 저역 + 느린 바람 흔들림."""
+    """폭우 보량음.
+
+    고역 노이즈를 그대로 쓰면 '쉬익' 하는 잡음(접촉 불량 같은 소리)이 된다.
+    그래서 6kHz까지 열려 있던 층을 3kHz 아래로 눌러 성형하고, 대신 물방울
+    트랜지언트를 흩뿌려 비라는 정보를 알갱이로 전달한다.
+    """
     seconds = 12.0
-    drizzle = spectral_noise(seconds, alpha=0.5, cutoff_hz=6000) * 1.0
-    body = spectral_noise(seconds, alpha=1.1, cutoff_hz=1400) * 2.2
-    rumble = spectral_noise(seconds, alpha=1.8, cutoff_hz=220) * 3.0
+    # 빗줄기의 몸통은 중역이다. 대역 통과로 잡아야 '비'로 들린다.
+    sheet = spectral_noise(seconds, alpha=0.9, cutoff_hz=2800, highpass_hz=420) * 6.0
+    body = spectral_noise(seconds, alpha=1.2, cutoff_hz=900, highpass_hz=160) * 3.0
+    rumble = spectral_noise(seconds, alpha=1.6, cutoff_hz=140) * 0.9
+    grains = droplets(seconds, count=520, low=900.0, high=2800.0) * 0.9
 
     time = np.arange(int(RATE * seconds)) / RATE
     # 바람이 몰아치는 느낌을 주는 아주 느린 진폭 변화
-    gust = 1.0 + 0.35 * np.sin(2 * np.pi * 0.07 * time + 0.4)
-    gust *= 1.0 + 0.18 * np.sin(2 * np.pi * 0.019 * time)
+    gust = 1.0 + 0.30 * np.sin(2 * np.pi * 0.07 * time + 0.4)
+    gust *= 1.0 + 0.16 * np.sin(2 * np.pi * 0.019 * time)
 
-    mixed = (drizzle + body + rumble) * gust
-    return loop_seamlessly(normalize(mixed, 0.55))
+    mixed = (sheet + body + rumble) * gust + grains
+    return loop_seamlessly(normalize(mixed, LEVELS["rain"]))
 
 
 def tick(duration: float, pitch: float, brightness: float) -> np.ndarray:
@@ -93,33 +137,44 @@ def metronome() -> np.ndarray:
         sound = tick(0.28, 1180.0 if strong else 940.0, 1.0 if strong else 0.7)
         sound *= 1.0 if strong else 0.72
         total[start : start + len(sound)] += sound
-    return normalize(total, 0.5)
+    return normalize(total, LEVELS["interrogate"])
 
 
 def footsteps() -> np.ndarray:
-    """이동음. 나무 바닥을 딛는 둔탁한 두 걸음."""
+    """이동음. 나무 바닥을 딛는 두 걸음.
+
+    저역(92Hz)에만 에너지를 두면 노트북 스피커가 재생하지 못해 거의 안 들린다.
+    바닥이 삐걱이는 중역 성분을 얹어서 작은 스피커에서도 들리게 만든다.
+    """
     total = np.zeros(int(RATE * 1.0))
-    for offset, level in ((0.02, 1.0), (0.42, 0.82)):
+    for offset, level in ((0.02, 1.0), (0.42, 0.85)):
         start = int(RATE * offset)
         count = int(RATE * 0.3)
         time = np.arange(count) / RATE
-        thud = spectral_noise(0.3, alpha=1.5, cutoff_hz=300)[:count]
-        thud = thud * np.exp(-time * 26.0)
-        body = np.sin(2 * np.pi * 92.0 * time) * np.exp(-time * 34.0) * 0.5
-        total[start : start + count] += (thud * 2.4 + body) * level
-    return normalize(total, 0.5)
+        thud = spectral_noise(0.3, alpha=1.4, cutoff_hz=420)[:count]
+        thud = thud * np.exp(-time * 24.0)
+        low = np.sin(2 * np.pi * 110.0 * time) * np.exp(-time * 30.0) * 0.45
+        # 작은 스피커에 실리는 대역
+        creak = np.sin(2 * np.pi * 320.0 * time) * np.exp(-time * 46.0) * 0.55
+        creak += np.sin(2 * np.pi * 540.0 * time) * np.exp(-time * 70.0) * 0.30
+        total[start : start + count] += (thud * 2.2 + low + creak) * level
+    return normalize(total, LEVELS["move"])
 
 
 def rustle() -> np.ndarray:
-    """조사음. 종이를 넘기며 스치는 소리에 가까운 고역 노이즈."""
+    """조사음. 종이를 넘기며 스치는 소리.
+
+    9kHz까지 열어두면 '치익' 하고 날카롭게 튀어 다른 효과음보다 크게 들린다.
+    상단을 4.5kHz로 눌러 둔다.
+    """
     seconds = 0.85
     count = int(RATE * seconds)
     time = np.arange(count) / RATE
-    base = spectral_noise(seconds, alpha=0.2, cutoff_hz=9000)[:count]
+    base = spectral_noise(seconds, alpha=0.3, cutoff_hz=4200, highpass_hz=900)[:count]
     # 두 번 스치도록 진폭에 봉우리를 만든다
     envelope = np.exp(-((time - 0.12) ** 2) / 0.0035)
     envelope += 0.8 * np.exp(-((time - 0.46) ** 2) / 0.0050)
-    return normalize(base * envelope, 0.42)
+    return normalize(base * envelope, LEVELS["search"])
 
 
 def write_wav(name: str, signal: np.ndarray) -> None:
