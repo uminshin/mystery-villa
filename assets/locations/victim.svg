@@ -1,0 +1,30 @@
+<svg viewBox="0 0 180 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="피해자 증명사진 — 60대 남성, 흰머리, 안경, 정장">
+  <rect width="180" height="240" fill="#1a1613"/>
+  <rect x="4" y="4" width="172" height="232" fill="none" stroke="#3a322a" stroke-width="2"/>
+
+  <circle cx="90" cy="96" r="70" fill="#211c18"/>
+
+  <path d="M52 226 q6 -52 38 -60 q32 8 38 60 z" fill="#241f1a" stroke="#3a322a" stroke-width="2"/>
+  <path d="M90 166 l-16 12 l16 22 l16 -22 z" fill="#1a1613" stroke="#3a322a" stroke-width="1.5"/>
+  <path d="M90 178 l-5 8 l5 34 l5 -34 z" fill="#8f2f28" opacity="0.55"/>
+  <path d="M74 178 q16 10 32 0" fill="none" stroke="#3a322a" stroke-width="1.5"/>
+
+  <path d="M90 62 q-26 0 -26 30 q0 34 26 44 q26 -10 26 -44 q0 -30 -26 -30 z"
+        fill="#2c2621" stroke="#3a322a" stroke-width="2"/>
+
+  <path d="M64 88 q-2 -34 26 -34 q28 0 26 34 q-8 -18 -26 -18 q-18 0 -26 18 z"
+        fill="#c9c2b4" opacity="0.55"/>
+
+  <g stroke="#d9a94a" stroke-width="2" fill="none" opacity="0.85">
+    <circle cx="79" cy="96" r="9"/>
+    <circle cx="101" cy="96" r="9"/>
+    <path d="M88 96 h4"/>
+    <path d="M70 94 l-6 -3 M110 94 l6 -3"/>
+  </g>
+
+  <path d="M82 118 q8 5 16 0" fill="none" stroke="#3a322a" stroke-width="2"/>
+  <path d="M86 104 v6" stroke="#3a322a" stroke-width="1.5"/>
+  <path d="M72 82 q7 -4 13 -1 M95 81 q6 -3 13 1" stroke="#3a322a" stroke-width="1.5" fill="none"/>
+
+  <text x="90" y="20" fill="#8a7f70" font-family="serif" font-size="10" text-anchor="middle">피해자</text>
+</svg>

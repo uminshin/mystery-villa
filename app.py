@@ -20,7 +20,13 @@ AUDIO_DIR = Path(__file__).parent / "assets" / "audio"
 # 행동별 효과음. 없는 파일은 조용히 건너뛴다.
 ACTION_SOUNDS = {"이동": "move.wav", "조사": "search.wav", "심문": "interrogate.wav"}
 
-st.set_page_config(page_title="그날 밤, 별장에서", page_icon="🕯️")
+st.set_page_config(
+    page_title="그날 밤, 별장에서",
+    page_icon="🕯️",
+    # 기본 레이아웃은 본문을 700px 남짓으로 묶어서, 2단으로 나누면 양쪽이 다 좁아진다.
+    # 나레이션 자체는 CSS의 max-width로 읽기 좋은 폭을 따로 유지한다.
+    layout="wide",
+)
 
 OPENING_PROMPT = (
     "게임을 시작한다. 도입부 나레이션(2~4문장)과 첫 선택지 3개를 제시하라. "
@@ -41,18 +47,45 @@ ACTION_ICONS = {
 
 
 @st.cache_data(show_spinner=False)
-def load_location_art(location: str) -> str | None:
-    """장소 삽화 SVG를 읽어 온다. 파일이 없으면 None(삽화 없이 진행).
-
-    location이 "__map__"이면 평면도를 읽는다.
-    """
-    slug = "map" if location == "__map__" else gs.LOCATION_ART.get(location)
-    if not slug:
-        return None
+def load_svg(slug: str) -> str | None:
+    """assets/locations/<slug>.svg를 읽어 온다. 없으면 None(삽화 없이 진행)."""
     path = ART_DIR / f"{slug}.svg"
-    if not path.exists():
-        return None
-    return path.read_text(encoding="utf-8")
+    return path.read_text(encoding="utf-8") if path.exists() else None
+
+
+def load_location_art(location: str) -> str | None:
+    slug = gs.LOCATION_ART.get(location)
+    return load_svg(slug) if slug else None
+
+
+def svg_block(
+    svg: str,
+    class_name: str,
+    ratio: str,
+    fit: str = "cover",
+    max_width: str | None = None,
+) -> None:
+    """SVG를 data URI 배경으로 깐 div 하나를 그린다.
+
+    st.html이 <svg>를 살균 과정에서 제거하기 때문에 인라인 SVG는 쓸 수 없다.
+    <style>과 <div>는 통과하므로 배경 이미지로 우회한다.
+    """
+    encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    cap = f"max-width: {max_width};" if max_width else ""
+    st.html(
+        f"""<style>
+        .{class_name} {{
+            width: 100%;
+            {cap}
+            aspect-ratio: {ratio};
+            background-image: url('data:image/svg+xml;base64,{encoded}');
+            background-size: {fit};
+            background-repeat: no-repeat;
+            background-position: center;
+        }}
+        </style>
+        <div class="{class_name}"></div>"""
+    )
 
 
 def _art_data_uri(location: str) -> str | None:
@@ -64,59 +97,34 @@ def _art_data_uri(location: str) -> str | None:
 
 
 def render_map(location: str) -> None:
-    """별장 평면도. 지금 있는 방을 강조색 테두리로 표시한다.
+    """별장 평면도. 지금 있는 방을 강조색으로 칠한다.
 
-    배경 이미지로 넣으면 외부 CSS가 SVG 내부에 닿지 않으므로,
-    SVG 문서 안에 <style>을 끼워 넣어서 현재 방만 강조한다.
+    배경 이미지로 쓰면 외부 CSS가 SVG 내부에 닿지 않으므로,
+    SVG 문서 안에 <style>을 끼워 넣어 현재 방만 강조한다.
     """
-    svg = load_location_art("__map__")
+    svg = load_svg("map")
     if svg is None:
         return
     slug = gs.LOCATION_ART.get(location)
     if slug:
         svg = svg.replace(
             "</svg>",
-            f"<style>#room-{slug}{{fill:#241f1a;stroke:{HIGHLIGHT};stroke-width:3}}</style></svg>",
+            f"<style>#room-{slug}{{fill:#2a231d;stroke:{HIGHLIGHT}}}</style></svg>",
         )
-    encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
-    st.html(
-        f"""<style>
-        .villa-map {{
-            width: 100%;
-            aspect-ratio: 420 / 300;
-            background-image: url('data:image/svg+xml;base64,{encoded}');
-            background-size: contain;
-            background-repeat: no-repeat;
-            background-position: center;
-        }}
-        </style>
-        <div class="villa-map"></div>"""
-    )
+    svg_block(svg, "villa-map", "440 / 340", fit="contain", max_width="360px")
+
+
+def render_victim_portrait() -> None:
+    svg = load_svg("victim")
+    if svg is not None:
+        # 증명사진 크기로 묶어 둔다. 와이드 레이아웃에서 그냥 두면 카드를 삼킨다.
+        svg_block(svg, "villa-victim", "180 / 240", fit="contain", max_width="132px")
 
 
 def render_location_art(location: str) -> None:
-    """장소 삽화를 배경 이미지로 깐다.
-
-    st.html은 <svg>를 살균 과정에서 제거하므로 인라인 SVG는 쓸 수 없다.
-    data URI 배경으로 넣으면 <div>와 <style>만 쓰게 되어 그대로 살아남는다.
-    """
-    uri = _art_data_uri(location)
-    if uri is None:
-        return
-    st.html(
-        f"""<style>
-        .villa-art {{
-            width: 100%;
-            aspect-ratio: 800 / 240;
-            background-image: url('{uri}');
-            background-size: cover;
-            background-position: center;
-            border: 1px solid #3a322a;
-            border-radius: 4px;
-        }}
-        </style>
-        <div class="villa-art"></div>"""
-    )
+    svg = load_location_art(location)
+    if svg is not None:
+        svg_block(svg, "villa-art", "800 / 240", max_width="46rem")
 
 
 def inject_clue_background(location: str) -> None:
@@ -227,9 +235,20 @@ def inject_css() -> None:
         }}
 
         /* 남은 턴이 얼마 없을 때 강조 */
-        [class*="st-key-turns-low"] p {{
+        [class*="st-key-turns-low"] p,
+        [class*="st-key-turn-low"] [data-testid="stMetricValue"] {{
             color: {HIGHLIGHT} !important;
-            font-weight: 600;
+        }}
+
+        /* 오디오 플레이어는 숨긴다. 재생/루프는 계속 동작한다. */
+        [class*="st-key-bgm"], [class*="st-key-sfx-"] {{
+            display: none !important;
+        }}
+
+        /* 나레이션 한 줄이 너무 길어지면 눈이 되돌아올 자리를 잃는다.
+           한글 본문은 한 줄 40자 안쪽이 읽기 편하다. */
+        .st-key-narration, .st-key-briefing {{
+            max-width: 46rem;
         }}
 
         @media (prefers-reduced-motion: reduce) {{
@@ -256,7 +275,7 @@ def get_client() -> anthropic.Anthropic:
 def start_new_game() -> None:
     st.session_state.state = gs.new_state()
     st.session_state.history = []
-    st.session_state.phase = "start"
+    st.session_state.phase = "home"
     st.session_state.gm = None
     st.session_state.error = None
     st.session_state.found = None
@@ -355,94 +374,98 @@ def take_action(choice: dict[str, str], narration_slot=None) -> None:
 
 
 def render_case_file() -> None:
-    """수사 기록 — 사이드바를 없애고 본문 아래 탭으로 옮겼다.
+    """수사 기록 — 용의자 → 단서 → 탐정 노트를 위에서 아래로 쌓는다.
 
-    용의자 수치 / 탐정 노트 / 단서 목록을 나란히 두어, 진술의 앞뒤를 맞춰볼 때
-    한 화면에서 오갈 수 있게 했다.
+    탭으로 접어두면 진술을 대조할 때마다 탭을 옮겨야 해서, 세 블록을 모두
+    펼쳐 둔다. 메모가 길어질 수 있어 노트를 맨 아래로 뒀다.
     """
     state = st.session_state.state
-    # 순서: 용의자 > 단서 > 탐정 노트. 메모가 길어질 수 있어 노트를 맨 뒤로 둔다.
-    suspects_tab, clues_tab, notes_tab = st.tabs(
+
+    # ── 용의자 ────────────────────────────────────────────
+    # progress bar 6개를 용의자 1행씩 3행 표로 묶었다. 같은 인물의 의심도와
+    # 신뢰도를 나란히 봐야 심문 판단이 되는데, 이전 배치는 두 값이 떨어져 있었다.
+    st.markdown("###### 용의자")
+    st.dataframe(
         [
-            "용의자",
-            f"단서 {len(state['clues_found'])} / {len(gs.CLUES)}",
-            "탐정 노트",
-        ]
+            {
+                "용의자": info["short"],
+                "의심도": state["suspicion"][key],
+                "신뢰도": state["npc_trust"][key],
+            }
+            for key, info in gs.SUSPECTS.items()
+        ],
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "용의자": st.column_config.TextColumn(width=76),
+            "의심도": st.column_config.ProgressColumn(
+                min_value=0,
+                max_value=100,
+                format="%d",
+                width=90,
+                help="이 인물이 범인이라는 심증. 조사·심문 결과로 움직인다.",
+            ),
+            "신뢰도": st.column_config.ProgressColumn(
+                min_value=0,
+                max_value=100,
+                format="%d",
+                width=90,
+                help="높으면 심문에서 더 많이 털어놓는다. 70 이상이면 숨긴 것까지 흘린다.",
+            ),
+        },
     )
 
-    with suspects_tab:
-        # progress bar 6개를 용의자 1행씩 3행 표로 묶었다. 같은 인물의 의심도와
-        # 신뢰도를 나란히 봐야 심문 판단이 되는데, 이전 배치는 두 값이 떨어져 있었다.
+    # ── 단서 ──────────────────────────────────────────────
+    found_this_turn = st.session_state.found is not None
+    count_key = f"clue-count-hit-{state['turn']}" if found_this_turn else "clue-count"
+    with st.container(key=count_key):
+        st.markdown(f"###### 단서 {len(state['clues_found'])} / {len(gs.CLUES)}")
+
+    if state["clues_found"]:
+        for index, cid in enumerate(state["clues_found"]):
+            clue = gs.CLUES[cid]
+            newest = found_this_turn and index == len(state["clues_found"]) - 1
+            with st.container(border=True):
+                mark = " :orange[**← 방금**]" if newest else ""
+                st.markdown(f"**{clue['name']}**{mark}")
+                st.caption(f"{clue['location']} · {clue['detail']}")
+    else:
+        st.caption("아직 없음")
+
+    # ── 탐정 노트 ─────────────────────────────────────────
+    # 자동 기록 + 인물별 메모. 알리바이의 앞뒤를 맞추려면 "누가 몇 시에 뭘 했다"를
+    # 어딘가에 적어둬야 하는데, 그걸 게임 밖 종이에 적게 만들 이유가 없다.
+    st.markdown("###### 탐정 노트")
+    if st.session_state.log:
         st.dataframe(
             [
                 {
-                    "용의자": info["short"],
-                    "의심도": state["suspicion"][key],
-                    "신뢰도": state["npc_trust"][key],
+                    "턴": entry["turn"],
+                    "장소": entry["location"],
+                    "행동": entry["action"],
+                    "단서": entry["found"] or "",
                 }
-                for key, info in gs.SUSPECTS.items()
+                for entry in st.session_state.log
             ],
             hide_index=True,
             width="stretch",
             column_config={
-                "용의자": st.column_config.TextColumn(width="small"),
-                "의심도": st.column_config.ProgressColumn(
-                    min_value=0, max_value=100, format="%d", width="small",
-                    help="이 인물이 범인이라는 심증. 조사·심문 결과로 움직인다.",
-                ),
-                "신뢰도": st.column_config.ProgressColumn(
-                    min_value=0, max_value=100, format="%d", width="small",
-                    help="높으면 심문에서 더 많이 털어놓는다. 70 이상이면 숨긴 것까지 흘린다.",
-                ),
+                "턴": st.column_config.TextColumn(width=40),
+                "장소": st.column_config.TextColumn(width=64),
+                "행동": st.column_config.TextColumn(width=52),
+                "단서": st.column_config.TextColumn(width=150),
             },
         )
+    else:
+        st.caption("아직 기록이 없습니다.")
 
-    with notes_tab:
-        # 자동 기록 + 직접 메모. 알리바이의 앞뒤를 맞추려면 "누가 몇 시에 뭘 했다"를
-        # 어딘가에 적어둬야 하는데, 그걸 게임 밖 종이에 적게 만들 이유가 없다.
-        if st.session_state.log:
-            rows = []
-            for entry in st.session_state.log:
-                rows.append(
-                    {
-                        "턴": entry["turn"],
-                        "장소": entry["location"],
-                        "행동": entry["action"],
-                        "내용": entry["label"],
-                        "단서": entry["found"] or "",
-                    }
-                )
-            st.dataframe(rows, hide_index=True, width="stretch")
-        else:
-            st.caption("아직 기록이 없습니다.")
-
-        st.caption("인물별 메모")
-        for key, info in gs.SUSPECTS.items():
-            st.text_area(
-                info["name"],
-                key=f"notes_{key}",
-                height=110,
-                placeholder=f"{info['short']}의 진술과 모순을 적어두세요.\n예) 23:00 취침 주장",
-            )
-
-    with clues_tab:
-        found_this_turn = st.session_state.found is not None
-        count_key = (
-            f"clue-count-hit-{state['turn']}" if found_this_turn else "clue-count"
+    for key, info in gs.SUSPECTS.items():
+        st.text_area(
+            info["name"],
+            key=f"notes_{key}",
+            height=104,
+            placeholder=f"{info['short']}의 진술과 모순을 적어두세요.\n예) 23:00 취침 주장",
         )
-        with st.container(key=count_key):
-            st.caption(f"단서 {len(state['clues_found'])} / {len(gs.CLUES)}")
-
-        if state["clues_found"]:
-            for index, cid in enumerate(state["clues_found"]):
-                clue = gs.CLUES[cid]
-                newest = found_this_turn and index == len(state["clues_found"]) - 1
-                with st.container(border=True):
-                    mark = " :orange[**← 방금**]" if newest else ""
-                    st.markdown(f"**{clue['name']}**{mark}")
-                    st.caption(f"{clue['location']} · {clue['detail']}")
-        else:
-            st.caption("아직 없음")
 
 
 def render_start() -> None:
@@ -451,41 +474,43 @@ def render_start() -> None:
     플레이어가 모르는 정보(인물의 성별·관계 등)를 전제로 단서를 해석하게 하면
     안 되므로, 인물 정보를 처음부터 표로 공개한다.
     """
-    st.markdown("# 🕯️ 그날 밤, 별장에서")
-    st.markdown(":gray[사건에 들어가며]")
-    st.divider()
+    st.markdown("## 사건에 들어가며")
 
-    with st.container(key="narration"):
+    # 한 문장씩 줄을 끊는다. 통짜 문단은 어디까지 읽었는지 놓치기 쉽다.
+    with st.container(key="briefing"):
         st.markdown(
-            "폭풍으로 뱃길이 끊긴 외딴 섬의 별장. 당신은 이곳의 손님이 아니라, "
-            "의뢰를 받고 건너온 **탐정**이다. 어젯밤 별장의 주인이 서재에서 숨졌고, "
-            "배가 다시 들어오는 아침까지 섬을 나갈 수 있는 사람은 아무도 없다. "
-            "지금 이 건물 안에 범인이 있다."
+            "폭풍으로 뱃길이 끊긴 외딴 섬의 별장.  \n"
+            "당신은 이곳의 손님이 아니라, 의뢰를 받고 건너온 **탐정**이다.  \n"
+            "어젯밤 별장의 주인이 서재에서 숨졌다.  \n"
+            "아침 배가 들어오기 전까지 섬을 나갈 수 있는 사람은 아무도 없다.  \n"
+            ":gray[지금 이 건물 안에 범인이 있다.]"
         )
 
     st.write("")
-    left, right = st.columns([1, 1], gap="medium")
-
-    with left:
-        st.markdown("###### 피해자")
-        with st.container(border=True):
+    st.markdown("###### 피해자")
+    with st.container(border=True):
+        info_col, photo_col = st.columns([3, 1], gap="medium", vertical_alignment="top")
+        with info_col:
             st.markdown(f"**{gs.VICTIM}**")
             st.markdown(
                 f":gray[사인] {gs.CAUSE_OF_DEATH}  \n"
                 f":gray[사망 추정] **{gs.TIME_OF_DEATH}**  \n"
                 f":gray[발견] {gs.DISCOVERY}"
             )
+        with photo_col:
+            render_victim_portrait()
 
-    with right:
-        st.markdown("###### 그날 밤의 시각")
-        with st.container(border=True):
-            st.markdown(
-                "  \n".join(
-                    f"**{when}** · {what}" if when == gs.TIME_OF_DEATH
-                    else f":gray[{when}] {what}"
-                    for when, what in gs.TIMELINE
-                )
+    st.write("")
+    st.markdown("###### 그날 밤의 시각")
+    with st.container(border=True):
+        st.markdown(
+            "  \n".join(
+                f"**{when}** · {what}"
+                if when == gs.TIME_OF_DEATH
+                else f":gray[{when}] {what}"
+                for when, what in gs.TIMELINE
             )
+        )
 
     st.write("")
     st.markdown("###### 별장에 남은 세 사람")
@@ -501,11 +526,12 @@ def render_start() -> None:
         ],
         hide_index=True,
         width="stretch",
+        # 픽셀로 고정한다. 내용 길이에 따라 폭이 흔들리면 표가 산만해진다.
         column_config={
-            "인물": st.column_config.TextColumn(width="small"),
-            "성별": st.column_config.TextColumn(width="small"),
-            "나이": st.column_config.TextColumn(width="small"),
-            "피해자와의 관계": st.column_config.TextColumn(width="large"),
+            "인물": st.column_config.TextColumn(width=170),
+            "성별": st.column_config.TextColumn(width=60),
+            "나이": st.column_config.TextColumn(width=60),
+            "피해자와의 관계": st.column_config.TextColumn(width=400),
         },
     )
 
@@ -530,20 +556,70 @@ def render_start() -> None:
             )
 
     st.write("")
-    st.toggle(
-        "소리 켜기",
-        key="sound_on",
-        help="폭우 보량음과 행동 효과음. 게임 중에도 끌 수 있습니다.",
-    )
+    back, go = st.columns([1, 3], gap="small")
+    with back:
+        if st.button("돌아가기", icon=":material/arrow_back:", width="stretch"):
+            st.session_state.phase = "home"
+            st.rerun()
+    with go:
+        if st.button(
+            "수사를 시작한다",
+            type="primary",
+            icon=":material/play_arrow:",
+            width="stretch",
+        ):
+            st.session_state.phase = "play"
+            st.rerun()
 
-    if st.button(
-        "수사를 시작한다",
-        type="primary",
-        icon=":material/play_arrow:",
-        width="stretch",
-    ):
-        st.session_state.phase = "play"
-        st.rerun()
+
+def render_home() -> None:
+    """타이틀 화면. 사건을 고르고 설정을 만지는 자리.
+
+    지금은 사건이 하나뿐이지만, 여러 사건을 이어서 하려면 이 층이 필요하다.
+    탐정 등급은 아직 표시만 한다 — 평판 계산은 다음 단계다.
+    """
+    st.write("")
+    st.markdown("# 🕯️ 그날 밤, 별장에서")
+    st.markdown(":gray[미스터리 텍스트 어드벤처]")
+    st.write("")
+
+    left, right = st.columns([3, 2], gap="large")
+
+    with left:
+        st.markdown("###### 사건 파일")
+        with st.container(border=True):
+            st.markdown("**제1화 · 그날 밤, 별장에서**")
+            st.caption("폭풍으로 갇힌 외딴 섬의 별장. 용의자 셋, 방 여섯, 10턴.")
+            if st.button(
+                "사건을 맡는다",
+                type="primary",
+                icon=":material/play_arrow:",
+                width="stretch",
+            ):
+                st.session_state.phase = "briefing"
+                st.rerun()
+
+        with st.container(border=True):
+            st.markdown(":gray[**제2화 · 준비 중**]")
+            st.caption("다음 사건은 아직 열리지 않았습니다.")
+
+    with right:
+        st.markdown("###### 탐정")
+        with st.container(border=True):
+            st.metric("등급", "수련 탐정", border=False)
+            st.markdown(
+                f":gray[해결한 사건] {st.session_state.get('solved', 0)}건  \n"
+                f":gray[평판] {st.session_state.get('reputation', 0)}"
+            )
+            st.caption("사건을 증거로 입증할수록 평판이 오릅니다.")
+
+        st.markdown("###### 설정")
+        with st.container(border=True):
+            st.toggle(
+                "소리 켜기",
+                key="sound_on",
+                help="폭우 보량음과 행동 효과음. 게임 중에도 끌 수 있습니다.",
+            )
 
 
 def render_play() -> None:
@@ -574,9 +650,30 @@ def render_play() -> None:
     stage, panel = st.columns([3, 2], gap="medium")
 
     with panel:
-        render_map(state["location"])
-        render_case_file()
+        # 오른편 위: 설정과 남은 시간. 그 아래 평면도, 그리고 수사 기록.
         st.toggle("소리 켜기", key="sound_on")
+        remaining = state["max_turns"] - state["turn"]
+        with st.container(key="turn-low" if remaining <= 3 else "turn-normal"):
+            st.metric(
+                "남은 턴",
+                f"{remaining}",
+                delta=f"{state['turn']} / {state['max_turns']} 사용",
+                delta_color="off",
+                border=True,
+            )
+        render_map(state["location"])
+        st.divider()
+        render_case_file()
+
+        st.divider()
+        if st.button(
+            "처음부터 다시",
+            icon=":material/restart_alt:",
+            type="tertiary",
+            width="stretch",
+        ):
+            start_new_game()
+            st.rerun()
 
     with stage:
         # 제목을 없앤 자리를 장소가 채운다. 지금 어디에 있는지가 화면의 머리글이다.
@@ -728,12 +825,15 @@ inject_css()
 phase = st.session_state.phase
 
 # 오디오 요소는 컬럼 밖 고정 위치에 둔다. 위치가 흔들리면 요소가 새로 만들어져
-# 보량음이 매 턴 처음부터 다시 재생된다.
-if phase != "start":
+# 보량음이 매 턴 처음부터 다시 재생된다. 플레이어 조작 전에는 브라우저가
+# 자동재생을 막으므로 홈 화면에서는 아예 만들지 않는다.
+if phase not in ("home", "briefing"):
     render_bgm()
     render_action_sound()
 
-if phase == "start":
+if phase == "home":
+    render_home()
+elif phase == "briefing":
     render_start()
 elif phase == "play":
     render_play()
