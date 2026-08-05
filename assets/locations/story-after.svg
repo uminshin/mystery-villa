@@ -1,0 +1,39 @@
+<svg viewBox="0 0 520 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="그 후 — 다락방에서 반쯤 태운 사진과 빈 수면제 병, 그리고 거실의 위스키 잔 두 개">
+  <rect width="520" height="200" fill="#1a1613"/>
+  <rect x="3" y="3" width="514" height="194" fill="none" stroke="#3a322a" stroke-width="2"/>
+
+  <path d="M266 16 V190" stroke="#3a322a" stroke-width="2" stroke-dasharray="6 7"/>
+  <text x="26" y="30" fill="#8a7f70" font-family="serif" font-size="11">다락방</text>
+  <text x="290" y="30" fill="#8a7f70" font-family="serif" font-size="11">거실 · 그녀와 무관하다</text>
+
+  <g fill="#e8ddc8" opacity="0.26">
+    <rect x="52" y="72" width="86" height="60" transform="rotate(-7 52 72)"/>
+  </g>
+  <g fill="#2c2621" stroke="#5a4f42" stroke-width="1.5">
+    <circle cx="78" cy="96" r="9"/>
+    <path d="M78 105 v18"/>
+  </g>
+  <path d="M104 74 q22 22 8 56 q-18 6 -30 -4 q26 -18 22 -52 z" fill="#14110f" opacity="0.92"/>
+  <path d="M100 78 q18 20 6 48" stroke="#8f2f28" stroke-width="2" fill="none" opacity="0.6"/>
+  <path d="M96 84 q10 14 4 32" stroke="#d9a94a" stroke-width="1.5" fill="none" opacity="0.55"/>
+  <text x="96" y="156" fill="#8a7f70" font-family="serif" font-size="10" text-anchor="middle">얼굴 하나만 그슬렸다</text>
+
+  <g stroke="#3a322a" stroke-width="2" fill="#221d19">
+    <rect x="188" y="98" width="22" height="34" rx="4"/>
+    <path d="M192 98 v-7 h14 v7"/>
+  </g>
+  <text x="199" y="152" fill="#8a7f70" font-family="serif" font-size="10" text-anchor="middle">빈 병</text>
+
+  <g stroke="#3a322a" stroke-width="2" fill="#211c18">
+    <rect x="300" y="126" width="180" height="8" rx="2"/>
+  </g>
+  <g stroke="#5a4f42" stroke-width="2" fill="#1e1a17">
+    <path d="M330 126 l-14 -30 h34 z"/>
+    <path d="M410 126 l-14 -30 h34 z" transform="rotate(-100 410 118)"/>
+  </g>
+  <path d="M318 104 q14 8 28 0" stroke="#8f2f28" stroke-width="2" fill="none" opacity="0.45"/>
+  <g stroke="#d9a94a" stroke-width="1.5" fill="none" opacity="0.7">
+    <path d="M446 122 q10 -8 20 -2"/>
+  </g>
+  <text x="390" y="158" fill="#8a7f70" font-family="serif" font-size="10" text-anchor="middle">지문을 닦은 사람은 A</text>
+</svg>

@@ -1,0 +1,38 @@
+<svg viewBox="0 0 520 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="관계 — 베개 밑에 접힌 편지 한 통과 두 사람의 일정표">
+  <rect width="520" height="200" fill="#1a1613"/>
+  <rect x="3" y="3" width="514" height="194" fill="none" stroke="#3a322a" stroke-width="2"/>
+
+  <g stroke="#3a322a" stroke-width="2" fill="#221d19">
+    <path d="M40 150 q0 -34 40 -34 h96 q40 0 40 34 z"/>
+  </g>
+  <path d="M40 150 h176" stroke="#3a322a" stroke-width="2"/>
+  <g fill="#e8ddc8" opacity="0.9">
+    <path d="M126 138 l52 -14 v30 l-52 12 z" opacity="0.34"/>
+    <path d="M126 138 l52 -14 l-24 22 z" opacity="0.5"/>
+  </g>
+  <path d="M138 152 h30 M138 160 h20" stroke="#8a7f70" stroke-width="1.5" opacity="0.7"/>
+  <text x="128" y="112" fill="#8a7f70" font-family="serif" font-size="11">베개 밑</text>
+
+  <g stroke="#3a322a" stroke-width="2" fill="#1e1a17">
+    <rect x="300" y="44" width="76" height="102"/>
+    <rect x="392" y="44" width="76" height="102"/>
+  </g>
+  <g stroke="#4a4038" stroke-width="1.5">
+    <path d="M300 66 H376 M300 86 H376 M300 106 H376 M300 126 H376"/>
+    <path d="M392 66 H468 M392 86 H468 M392 106 H468 M392 126 H468"/>
+  </g>
+  <g fill="#8f2f28" opacity="0.4">
+    <rect x="306" y="70" width="30" height="12"/>
+    <rect x="306" y="90" width="46" height="12"/>
+    <rect x="306" y="110" width="22" height="12"/>
+  </g>
+  <g fill="#d9a94a" opacity="0.5">
+    <rect x="398" y="70" width="46" height="12"/>
+    <rect x="398" y="90" width="52" height="12"/>
+    <rect x="398" y="110" width="40" height="12"/>
+  </g>
+  <text x="338" y="36" fill="#8a7f70" font-family="serif" font-size="11" text-anchor="middle">그의 일정</text>
+  <text x="430" y="36" fill="#8a7f70" font-family="serif" font-size="11" text-anchor="middle">그녀의 일정</text>
+  <path d="M430 146 v14 h-92" stroke="#5f564a" stroke-width="1.5" fill="none" stroke-dasharray="5 5"/>
+  <text x="384" y="176" fill="#5f564a" font-family="serif" font-size="10" text-anchor="middle">같은 칸에 겹쳐 적혔다</text>
+</svg>

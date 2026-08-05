@@ -202,7 +202,8 @@ def inject_css() -> None:
     """
     st.html(
         f"""<style>
-        .st-key-narration p {{
+        .st-key-narration p,
+        .st-key-briefing p {{
             font-size: 1.2rem;
             line-height: 1.9;
             letter-spacing: 0.01em;
@@ -246,19 +247,24 @@ def inject_css() -> None:
             color: {HIGHLIGHT} !important;
         }}
 
-        /* 오디오 플레이어는 숨긴다. 재생/루프는 계속 동작한다. */
-        [class*="st-key-bgm"], [class*="st-key-sfx-"] {{
+        /* 오디오 플레이어는 전부 숨긴다. 재생/루프는 계속 동작한다.
+           효과음은 키 없는 슬롯에 그려지므로 요소 자체를 잡아야 한다. */
+        [data-testid="stAudio"],
+        [data-testid="stAudioInput"] {{
+            display: none !important;
+        }}
+        [class*="st-key-bgm"] {{
             display: none !important;
         }}
 
         /* 나레이션 한 줄이 너무 길어지면 눈이 되돌아올 자리를 잃는다.
            한글 본문은 한 줄 40자 안쪽이 읽기 편하다. */
-        .st-key-narration, .st-key-briefing, .st-key-ending-story {{
+        .st-key-narration, .st-key-briefing {{
             max-width: 46rem;
         }}
-        .st-key-ending-story p {{
+        [class*="st-key-story-text-"] p {{
             font-size: 1.08rem;
-            line-height: 1.85;
+            line-height: 1.9;
         }}
 
         /* 브리핑 인물표: 캔버스 기반 dataframe과 달리 글자 크기를 키울 수 있다 */
@@ -835,12 +841,28 @@ def render_ending() -> None:
     with st.container(key="narration"):
         st.markdown(ending["text"])
 
-    # 동기는 정답 엔딩에서만 온다. 왜 그랬는지가 없으면 결말이 심심하다.
+    # 동기는 정답 엔딩에서만 온다. 절마다 그날 밤의 장면을 옆에 붙여서
+    # 긴 글이 밋밋해지지 않게 한다(사후 상황이 아니라 사건 당시 장면이다).
     if ending.get("story"):
         st.write("")
-        st.markdown("###### 그날 밤, 무슨 일이 있었나")
-        with st.container(border=True, key="ending-story"):
-            st.markdown(ending["story"])
+        st.markdown("## 그날 밤, 무슨 일이 있었나")
+        for index, section in enumerate(ending["story"]):
+            st.write("")
+            st.markdown(f"###### {section['title']}")
+            text_col, art_col = st.columns([3, 2], gap="large", vertical_alignment="top")
+            with text_col:
+                with st.container(key=f"story-text-{index}"):
+                    st.markdown(section["body"])
+            with art_col:
+                svg = load_svg(section["art"]) if section.get("art") else None
+                if svg is not None:
+                    svg_block(
+                        svg,
+                        f"villa-{section['art']}",
+                        "520 / 200",
+                        fit="contain",
+                        max_width="420px",
+                    )
 
     st.divider()
     if st.button(

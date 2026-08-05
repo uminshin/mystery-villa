@@ -77,12 +77,17 @@ def loop_seamlessly(signal: np.ndarray, fade_seconds: float = 0.6) -> np.ndarray
     return np.concatenate([blended, signal[fade:-fade]])
 
 
-def droplets(seconds: float, count: int, low: float, high: float) -> np.ndarray:
-    """물방울이 튀는 개별 트랜지언트. 노이즈만으로는 '쉬익' 하는
-    잡음처럼 들려서, 알갱이가 들리도록 짧은 충격을 흩뿌린다."""
+def droplets(
+    seconds: float, count: int, low: float, high: float, decay: float = 190.0
+) -> np.ndarray:
+    """물방울 충격을 흩뿌린다.
+
+    수가 적고 크면 하나하나 들려서 ASMR이 되므로, 비에 쓸 때는
+    아주 많이·아주 작게 넣어 연속된 질감으로만 기여하게 한다.
+    """
     total = np.zeros(int(RATE * seconds))
     length = int(RATE * 0.05)
-    envelope = np.exp(-np.arange(length) / RATE * 190.0)
+    envelope = np.exp(-np.arange(length) / RATE * decay)
     positions = RNG.integers(0, len(total) - length, size=count)
     pitches = RNG.uniform(low, high, size=count)
     levels = RNG.uniform(0.25, 1.0, size=count)
@@ -94,26 +99,67 @@ def droplets(seconds: float, count: int, low: float, high: float) -> np.ndarray:
 
 
 def rain() -> np.ndarray:
-    """폭우 보량음.
+    """비 보량음.
 
-    고역 노이즈를 그대로 쓰면 '쉬익' 하는 잡음(접촉 불량 같은 소리)이 된다.
-    그래서 6kHz까지 열려 있던 층을 3kHz 아래로 눌러 성형하고, 대신 물방울
-    트랜지언트를 흩뿌려 비라는 정보를 알갱이로 전달한다.
+    두 번 헛짚었다. 처음엔 고역 노이즈가 많아 '접촉 불량' 잡음처럼 들렸고,
+    고치면서 물방울을 키우니 알갱이가 하나하나 들려 ASMR이 됐다.
+    실제 비는 초당 수천 개의 충격이 겹친 '연속된 면'이다. 그래서
+    ① 400Hz~5kHz 대역의 연속음을 주역으로 두고
+    ② 물방울은 아주 작고 아주 많게 넣어 개별로 들리지 않게 texture로 녹인다.
     """
     seconds = 12.0
-    # 빗줄기의 몸통은 중역이다. 대역 통과로 잡아야 '비'로 들린다.
-    sheet = spectral_noise(seconds, alpha=0.9, cutoff_hz=2800, highpass_hz=420) * 6.0
-    body = spectral_noise(seconds, alpha=1.2, cutoff_hz=900, highpass_hz=160) * 3.0
-    rumble = spectral_noise(seconds, alpha=1.6, cutoff_hz=140) * 0.9
-    grains = droplets(seconds, count=520, low=900.0, high=2800.0) * 0.9
+    # 대역 분포를 측정해 가며 잡은 값이다. 결과는 중역 71% / 고역 29%,
+    # 크레스트 팩터 3.4(=연속음). 럼블 층을 넣으면 1/f 기울기 때문에 저역이
+    # 에너지를 다 먹어서 다른 층이 안 들린다 — 그래서 아예 뺐다.
+    sheet = spectral_noise(seconds, alpha=0.45, cutoff_hz=6000, highpass_hz=600) * 9.0
+    mid = spectral_noise(seconds, alpha=0.8, cutoff_hz=1600, highpass_hz=260) * 2.2
+    body = spectral_noise(seconds, alpha=1.1, cutoff_hz=420, highpass_hz=120) * 1.2
+    # 개별로 들리면 ASMR이 된다. 수를 늘리고 크기를 확 낮춰 질감으로만 남긴다.
+    grains = droplets(seconds, count=5200, low=1600.0, high=6000.0, decay=520.0) * 0.10
 
     time = np.arange(int(RATE * seconds)) / RATE
-    # 바람이 몰아치는 느낌을 주는 아주 느린 진폭 변화
-    gust = 1.0 + 0.30 * np.sin(2 * np.pi * 0.07 * time + 0.4)
-    gust *= 1.0 + 0.16 * np.sin(2 * np.pi * 0.019 * time)
+    # 비가 몰아치고 잦아드는 아주 느린 진폭 변화
+    gust = 1.0 + 0.22 * np.sin(2 * np.pi * 0.06 * time + 0.4)
+    gust *= 1.0 + 0.12 * np.sin(2 * np.pi * 0.017 * time)
 
-    mixed = (sheet + body + rumble) * gust + grains
+    mixed = (sheet + mid + body + grains) * gust
     return loop_seamlessly(normalize(mixed, LEVELS["rain"]))
+
+
+def door() -> np.ndarray:
+    """이동음. 걸쇠가 딸깍 열리고 경첩이 삐걱이는 소리.
+
+    발소리는 합성으로 '노크'처럼 들려서 문 여는 소리로 바꿨다.
+    경첩은 주파수가 천천히 올라가는 공진 + 미세한 떨림으로 만든다.
+    """
+    seconds = 1.1
+    count = int(RATE * seconds)
+    time = np.arange(count) / RATE
+    total = np.zeros(count)
+
+    # 걸쇠
+    latch_len = int(RATE * 0.12)
+    lt = np.arange(latch_len) / RATE
+    latch = np.sin(2 * np.pi * 780.0 * lt) * np.exp(-lt * 90.0) * 0.7
+    latch += RNG.standard_normal(latch_len) * np.exp(-lt * 260.0) * 0.5
+    total[:latch_len] += latch
+
+    # 경첩 삐걱: 220Hz에서 380Hz로 천천히 올라가며 떨린다
+    start = int(RATE * 0.16)
+    creak_len = int(RATE * 0.72)
+    ct = np.arange(creak_len) / RATE
+    sweep = 220.0 + 160.0 * (ct / ct[-1]) ** 1.4
+    phase = 2 * np.pi * np.cumsum(sweep) / RATE
+    tremolo = 1.0 + 0.45 * np.sin(2 * np.pi * 17.0 * ct)
+    envelope = np.sin(np.pi * np.clip(ct / ct[-1], 0, 1)) ** 0.7
+    creak = np.sin(phase) * tremolo * envelope * 0.55
+    creak += np.sin(2 * phase) * envelope * 0.18
+    creak += spectral_noise(0.72, alpha=0.6, cutoff_hz=3000, highpass_hz=600)[
+        :creak_len
+    ] * envelope * 1.2
+    total[start : start + creak_len] += creak
+
+    return normalize(total, LEVELS["move"])
 
 
 def tick(duration: float, pitch: float, brightness: float) -> np.ndarray:
@@ -138,27 +184,6 @@ def metronome() -> np.ndarray:
         sound *= 1.0 if strong else 0.72
         total[start : start + len(sound)] += sound
     return normalize(total, LEVELS["interrogate"])
-
-
-def footsteps() -> np.ndarray:
-    """이동음. 나무 바닥을 딛는 두 걸음.
-
-    저역(92Hz)에만 에너지를 두면 노트북 스피커가 재생하지 못해 거의 안 들린다.
-    바닥이 삐걱이는 중역 성분을 얹어서 작은 스피커에서도 들리게 만든다.
-    """
-    total = np.zeros(int(RATE * 1.0))
-    for offset, level in ((0.02, 1.0), (0.42, 0.85)):
-        start = int(RATE * offset)
-        count = int(RATE * 0.3)
-        time = np.arange(count) / RATE
-        thud = spectral_noise(0.3, alpha=1.4, cutoff_hz=420)[:count]
-        thud = thud * np.exp(-time * 24.0)
-        low = np.sin(2 * np.pi * 110.0 * time) * np.exp(-time * 30.0) * 0.45
-        # 작은 스피커에 실리는 대역
-        creak = np.sin(2 * np.pi * 320.0 * time) * np.exp(-time * 46.0) * 0.55
-        creak += np.sin(2 * np.pi * 540.0 * time) * np.exp(-time * 70.0) * 0.30
-        total[start : start + count] += (thud * 2.2 + low + creak) * level
-    return normalize(total, LEVELS["move"])
 
 
 def rustle() -> np.ndarray:
@@ -195,7 +220,7 @@ def main() -> None:
     print(f"합성 -> {OUT_DIR}")
     write_wav("rain.wav", rain())
     write_wav("interrogate.wav", metronome())
-    write_wav("move.wav", footsteps())
+    write_wav("move.wav", door())
     write_wav("search.wav", rustle())
     print("완료")
 
