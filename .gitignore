@@ -7,6 +7,8 @@ venv/
 .streamlit/secrets.toml
 .env
 
-# 실행 중 생기는 임시 로그
+# 실행 중 생기는 임시 로그. 서버가 파일을 잡고 있으면 삭제가 실패하므로
+# 패턴으로 넓게 막아둔다.
 out.txt
 err.txt
+*.log
