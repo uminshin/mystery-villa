@@ -18,6 +18,41 @@ OPENING_PROMPT = (
     "플레이어는 거실에 있다."
 )
 
+# 발견·변화를 알리는 강조색. 촛불 불꽃색으로 잡았다. 주색상(오xblood)은
+# '되돌릴 수 없는 결정'에 이미 쓰고 있어서 구분되는 색이 필요했고,
+# 배경 대비 11.2:1로 WCAG AA를 크게 넘긴다.
+HIGHLIGHT = "#f2c14e"
+
+# 행동 종류를 한눈에 구분하기 위한 아이콘. 이동만 턴을 소모하지 않는다.
+ACTION_ICONS = {
+    "이동": ":material/directions_walk:",
+    "조사": ":material/search:",
+    "심문": ":material/record_voice_over:",
+}
+
+
+def inject_css() -> None:
+    """나레이션 본문을 키우고 강조 요소에 색을 넣는다.
+
+    config.toml은 요소 단위 크기를 지정할 수 없어서 이 부분만 CSS로 처리한다.
+    st.container(key=...)가 만들어 주는 .st-key-<key> 클래스에만 붙인다.
+    """
+    st.html(
+        f"""<style>
+        .st-key-narration p {{
+            font-size: 1.2rem;
+            line-height: 1.9;
+            letter-spacing: 0.01em;
+        }}
+        .st-key-location h1 {{
+            margin-bottom: 0.1rem;
+        }}
+        .st-key-clue-card {{
+            border-color: {HIGHLIGHT} !important;
+        }}
+        </style>"""
+    )
+
 
 @st.cache_resource
 def get_client() -> anthropic.Anthropic:
@@ -31,7 +66,7 @@ def get_client() -> anthropic.Anthropic:
 def start_new_game() -> None:
     st.session_state.state = gs.new_state()
     st.session_state.history = []
-    st.session_state.phase = "play"
+    st.session_state.phase = "start"
     st.session_state.gm = None
     st.session_state.error = None
     st.session_state.found = None
@@ -146,6 +181,41 @@ def render_sidebar() -> None:
             st.rerun()
 
 
+def render_start() -> None:
+    """게임 진입 전 메인 화면. 제목은 여기서만 크게 보여준다."""
+    st.markdown("# 🕯️ 그날 밤, 별장에서")
+    st.markdown(
+        ":gray[폭풍으로 뱃길이 끊긴 외딴 별장. 어젯밤 주인이 서재에서 살해당했다.]"
+    )
+    st.write("")
+
+    with st.container(key="narration"):
+        st.markdown(
+            "당신은 이 별장의 손님 중 한 명이다. 아침 배가 들어오기 전까지 "
+            f"**{gs.MAX_TURNS}턴** 안에 진범을 찾아내야 한다. "
+            "용의자는 셋, 별장에는 여섯 개의 방이 있다."
+        )
+
+    st.write("")
+    with st.container(border=True):
+        st.markdown(
+            f"**규칙**  \n"
+            f":gray[· 장소 이동은 턴을 소모하지 않는다]  \n"
+            f":gray[· 조사와 심문은 1턴을 쓴다]  \n"
+            f":gray[· {gs.MAX_TURNS}턴이 끝나면 반드시 한 명을 지목해야 한다]"
+        )
+
+    st.write("")
+    if st.button(
+        "수사를 시작한다",
+        type="primary",
+        icon=":material/play_arrow:",
+        width="stretch",
+    ):
+        st.session_state.phase = "play"
+        st.rerun()
+
+
 def render_play() -> None:
     state = st.session_state.state
 
@@ -169,25 +239,29 @@ def render_play() -> None:
     if gm is None:
         return
 
-    st.markdown(f"#### {state['location']}")
-    st.write(gm["narration"])
+    # 제목을 없앤 자리를 장소가 채운다. 지금 어디에 있는지가 화면의 머리글이다.
+    with st.container(key="location"):
+        st.markdown(f"# {state['location']}")
+    remaining = state["max_turns"] - state["turn"]
+    st.caption(f"남은 턴 {remaining}")
+
+    with st.container(key="narration"):
+        st.markdown(gm["narration"])
 
     if st.session_state.found:
         found = st.session_state.found
-        with st.container(border=True):
-            st.badge("단서 획득", icon=":material/search:", color="orange")
+        with st.container(border=True, key="clue-card"):
+            st.badge("단서 획득", icon=":material/bookmark:", color="orange")
             st.markdown(f"**{found['name']}**")
             st.caption(found["detail"])
 
-    remaining = state["max_turns"] - state["turn"]
-    st.caption(f"남은 턴 {remaining}")
     st.divider()
-
     st.caption("이동은 턴을 소모하지 않습니다. 조사와 심문만 1턴.")
 
     for index, choice in enumerate(gm["choices"]):
         if st.button(
-            f"{choice['action']} · {choice['label']}",
+            choice["label"],
+            icon=ACTION_ICONS.get(choice["action"]),
             key=f"choice-{state['turn']}-{index}-{choice['action']}-{choice['target']}",
             width="stretch",
         ):
@@ -243,15 +317,16 @@ def render_ending() -> None:
         st.rerun()
 
 
-st.title("🕯️ 그날 밤, 별장에서")
-
 if "state" not in st.session_state:
     start_new_game()
 
+inject_css()
 render_sidebar()
 
 phase = st.session_state.phase
-if phase == "play":
+if phase == "start":
+    render_start()
+elif phase == "play":
     render_play()
 elif phase == "accuse":
     render_accuse()
