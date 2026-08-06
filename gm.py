@@ -370,7 +370,9 @@ def call_gm(
             ],
             messages=request_messages,
             output_config={
-                "effort": "medium",
+                # low: 짧은 나레이션 루프라 thinking/출력 토큰을 줄여 판당 비용을 낮춘다.
+                # 품질이 아쉬우면 medium으로 올리면 된다.
+                "effort": "low",
                 "format": {"type": "json_schema", "schema": RESPONSE_SCHEMA},
             },
         ) as stream:
