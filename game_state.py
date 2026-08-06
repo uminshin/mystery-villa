@@ -10,9 +10,12 @@ from __future__ import annotations
 import copy
 from typing import Any, Optional
 
-MAX_TURNS = 10
+# 7곳을 조사(7턴)하고 세 사람을 두 번씩 심문(6턴)하면 13턴이다.
+# 여유 2턴을 두어 15턴으로 잡았다. 10턴에서는 알리바이를 다 듣지 못한 채
+# 지목해야 해서 사실상 심증 게임이 됐다.
+MAX_TURNS = 15
 
-LOCATIONS = ["거실", "서재", "침실", "정원", "금고실", "다락방"]
+LOCATIONS = ["거실", "서재", "침실", "정원", "창고", "금고실", "다락방"]
 
 SUSPECTS = {
     # short는 표처럼 좁은 자리에서 쓴다.
@@ -40,7 +43,10 @@ SUSPECTS = {
         "motive": "숨겨진 관계",
         "gender": "여성",
         "age": "30대",
-        "relation": "3년간 피해자의 일정과 서류를 관리했다. 별장에 가장 익숙하다.",
+        "relation": (
+            "3년간 피해자의 일정과 서류를 관리했다. "
+            "별장 살림과 창고 정리도 그녀 몫이었다."
+        ),
     },
 }
 
@@ -109,6 +115,16 @@ CLUES: dict[str, dict[str, Any]] = {
         "detail": "사진에는 피해자와 비서가 나란히 서 있다. 비서 쪽 얼굴만 불에 그슬렸다.",
         "points_to": "C",
     },
+    "c7": {
+        "id": "c7",
+        "location": "창고",
+        "name": "선반에 남은 사각형 빈 자리",
+        "detail": (
+            "먼지 위에 무거운 것이 놓였던 사각 자국이 선명하고, 대리석 가루가 남아 있다. "
+            "그 자리의 물건만 사라졌다. 창고 정리를 맡은 사람은 한 명뿐이다."
+        ),
+        "points_to": "C",
+    },
 }
 
 CLUE_BY_LOCATION = {clue["location"]: clue for clue in CLUES.values()}
@@ -120,6 +136,7 @@ LOCATION_ART = {
     "서재": "study",
     "침실": "bedroom",
     "정원": "garden",
+    "창고": "shed",
     "금고실": "vault",
     "다락방": "attic",
 }
@@ -134,6 +151,7 @@ FLOORS = {
     "침실": "1층",
     "금고실": "지하",
     "정원": "옥외",
+    "창고": "옥외",
 }
 
 # 층 사이의 상하 관계. 이동 방향을 문장으로 고를 때 쓴다.

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 440 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="별장 평면도 — 2층 다락방과 서재, 1층 거실과 침실, 지하 금고실과 바깥 정원">
+<svg viewBox="0 0 440 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="별장 평면도 — 2층 다락방과 서재, 1층 거실과 침실, 지하 금고실, 옥외 정원과 창고">
   <rect width="440" height="340" fill="#14110f"/>
 
   <g fill="#8a7f70" font-family="serif" font-size="10" letter-spacing="1">
@@ -8,34 +8,38 @@
   </g>
 
   <g stroke="#4a4038" stroke-width="7" stroke-linecap="square" fill="#1a1613">
-    <rect x="40" y="34" width="170" height="86"/>
-    <rect x="230" y="34" width="170" height="86"/>
-    <rect x="40" y="154" width="170" height="86"/>
-    <rect x="230" y="154" width="170" height="86"/>
-    <rect x="40" y="274" width="170" height="52"/>
+    <rect id="room-attic" x="40" y="34" width="170" height="86"/>
+    <rect id="room-study" x="230" y="34" width="170" height="86"/>
+    <rect id="room-living-room" x="40" y="154" width="170" height="86"/>
+    <rect id="room-bedroom" x="230" y="154" width="170" height="86"/>
+    <rect id="room-vault" x="40" y="274" width="120" height="52"/>
   </g>
-  <rect x="230" y="274" width="170" height="52" stroke="#4a4038" stroke-width="7"
-        stroke-dasharray="14 9" fill="#171310"/>
+  <g stroke="#4a4038" stroke-width="7" stroke-dasharray="13 8" fill="#171310">
+    <rect id="room-garden" x="196" y="274" width="98" height="52"/>
+    <rect id="room-shed" x="312" y="274" width="88" height="52"/>
+  </g>
 
   <g stroke="#14110f" stroke-width="9" stroke-linecap="butt">
     <path d="M210 68 H230"/>
     <path d="M210 188 H230"/>
     <path d="M125 120 V154"/>
     <path d="M315 120 V154"/>
-    <path d="M125 240 V274"/>
-    <path d="M315 240 V274"/>
+    <path d="M100 240 V274"/>
+    <path d="M294 290 H312"/>
+    <path d="M280 240 V274"/>
   </g>
 
   <g stroke="#6d5d4a" stroke-width="2" fill="none" opacity="0.9">
-    <path d="M60 54 h26 v-13" />
+    <path d="M60 54 h26 v-13"/>
     <path d="M250 54 h34 M250 62 h34 M250 70 h34"/>
     <rect x="252" y="92" width="34" height="12"/>
     <path d="M60 176 h30 v22 h-30 z"/>
     <circle cx="176" cy="196" r="9"/>
     <path d="M250 176 h44 v24 h-44 z"/>
-    <path d="M258 296 h30 M258 304 h30"/>
-    <circle cx="176" cy="300" r="10"/>
-    <path d="M330 290 v22 M348 294 v18 M366 288 v24"/>
+    <path d="M56 296 h30 M56 304 h30"/>
+    <circle cx="128" cy="300" r="9"/>
+    <path d="M216 292 v20 M232 296 v16 M248 290 v22"/>
+    <path d="M330 292 h44 M330 300 h44 M330 308 h30"/>
   </g>
 
   <g fill="#e8ddc8" font-family="serif" font-size="15" text-anchor="middle">
@@ -43,8 +47,11 @@
     <text x="315" y="86">서재</text>
     <text x="125" y="206">거실</text>
     <text x="315" y="206">침실</text>
-    <text x="125" y="306">금고실</text>
-    <text x="315" y="306">정원</text>
+  </g>
+  <g fill="#e8ddc8" font-family="serif" font-size="13" text-anchor="middle">
+    <text x="100" y="306">금고실</text>
+    <text x="245" y="306">정원</text>
+    <text x="356" y="306">창고</text>
   </g>
 
   <g opacity="0.9">
@@ -53,8 +60,8 @@
   </g>
 
   <g stroke="#5f564a" stroke-width="1.5" fill="none">
-    <circle cx="410" cy="316" r="13"/>
-    <path d="M410 306 v20 M400 316 h20"/>
+    <circle cx="414" cy="146" r="13"/>
+    <path d="M414 136 v20 M404 146 h20"/>
   </g>
-  <text x="410" y="303" fill="#8a7f70" font-family="serif" font-size="9" text-anchor="middle">N</text>
+  <text x="414" y="132" fill="#8a7f70" font-family="serif" font-size="9" text-anchor="middle">N</text>
 </svg>

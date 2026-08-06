@@ -665,7 +665,10 @@ def render_home() -> None:
         st.markdown("###### 사건 파일")
         with st.container(border=True):
             st.markdown("**제1화 · 그날 밤, 별장에서**")
-            st.caption("폭풍으로 갇힌 외딴 섬의 별장. 용의자 셋, 방 여섯, 10턴.")
+            st.caption(
+                f"폭풍으로 갇힌 외딴 섬의 별장. "
+                f"용의자 {len(gs.SUSPECTS)}명, 장소 {len(gs.LOCATIONS)}곳, {gs.MAX_TURNS}턴."
+            )
             if st.button(
                 "사건을 맡는다",
                 type="primary",
