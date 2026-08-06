@@ -1,6 +1,8 @@
 """그날 밤, 별장에서 — Streamlit 진입점.
 
 턴 진행 → 상태 갱신 → 엔딩 분기까지 도는 최소 버전.
+
+audio assets rev: 2 (발소리/뒤지기 재설계 + 반복 조정 반영)
 """
 
 from __future__ import annotations
