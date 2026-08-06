@@ -154,7 +154,10 @@ def footsteps() -> np.ndarray:
         scuff *= np.exp(-t * 120.0) * 0.5
         return (body * 1.0 + thud * 1.2 + scuff) * level
 
-    step_time = 0.05
+    # 간격을 넉넉히 둬 한 걸음 한 걸음이 또렷이 세어지게 한다(메트로놈처럼).
+    # 촘촘하면 '두두두'로 뭉개져 발소리로 안 읽힌다.
+    STEP_INTERVAL = 0.62  # 초. 줄이면 촘촘·빠르게, 늘리면 성기게·느리게 걷는다.
+    step_time = 0.1
     idx = 0
     length = int(RATE * 0.18)
     while True:
@@ -165,7 +168,7 @@ def footsteps() -> np.ndarray:
         accent = 1.0 if idx % 2 == 0 else 0.78
         body_hz = 96.0 if idx % 2 == 0 else 112.0
         total[start : start + length] += footstep(accent, body_hz + RNG.uniform(-6, 6))
-        step_time += 0.46 + RNG.uniform(-0.04, 0.04)
+        step_time += STEP_INTERVAL + RNG.uniform(-0.02, 0.02)
         idx += 1
 
     return normalize(total, LEVELS["move"])
@@ -227,15 +230,16 @@ def rummage() -> np.ndarray:
         sig[:ramp] *= np.linspace(0, 1, ramp)
         return sig * 0.45
 
-    # 8초를 서랍 → 종이 → 달그락 순으로 느슨한 리듬으로 채운다.
-    builders = [drawer_slide, paper_rustle, clink]
-    at = 0.1
-    i = 0
-    while at < seconds - 0.6:
-        sig = builders[i % 3]()
-        place(sig, at)
-        at += len(sig) / RATE + RNG.uniform(0.12, 0.32)
-        i += 1
+    # 뒤지는 '동작'을 또렷이 셀 수 있게, 촘촘히 늘어놓지 않고 몇 번의 뚜렷한
+    # 사이클로 나눈다. 한 사이클 = 서랍 열고 → (사이) → 종이 뒤적 → (사이) → 달그락.
+    # 사이클 사이가 비어 있어야 "또 뒤진다"가 반복으로 읽힌다.
+    CYCLES = 4  # 뒤지는 동작 횟수. 늘리면 분주하게, 줄이면 여유롭게.
+    cycle_len = seconds / CYCLES
+    for c in range(CYCLES):
+        base = c * cycle_len + 0.15
+        place(drawer_slide(), base)
+        place(paper_rustle(), base + 0.65)
+        place(clink(), base + 1.35)
 
     return normalize(total, LEVELS["search"])
 
