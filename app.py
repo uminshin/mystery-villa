@@ -2,7 +2,7 @@
 
 턴 진행 → 상태 갱신 → 엔딩 분기까지 도는 최소 버전.
 
-audio assets rev: 3 (이동 8걸음으로 축소, 조사 달그락→나무 톡톡)
+audio assets rev: 4 (조사 2회 반복으로 축소)
 """
 
 from __future__ import annotations
@@ -335,9 +335,14 @@ def inject_css() -> None:
             line-height: 1.9;
             letter-spacing: 0.01em;
         }}
-        /* 브리핑 도입부는 이 게임의 첫 화면이다. 나레이션보다 한 단 크게. */
+        /* 브리핑 제목은 첫 화면의 얼굴이라 크게. 아래 나레이션과 대비를 준다. */
+        .st-key-briefing-title h2 {{
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }}
+        /* 도입부 나레이션은 제목보다 한 단 작게(그래도 본문보다는 큼). */
         .st-key-briefing p {{
-            font-size: 1.42rem;
+            font-size: 1.26rem;
             line-height: 1.85;
             letter-spacing: 0.005em;
         }}
@@ -411,6 +416,11 @@ def inject_css() -> None:
         .st-key-people-table td {{
             padding-top: 0.55rem;
             padding-bottom: 0.55rem;
+        }}
+        /* 인물 이름('B · 전 비즈니스 파트너')이 단어 중간에서 잘리지 않게 한다. */
+        .st-key-people-table th:first-child,
+        .st-key-people-table td:first-child {{
+            white-space: nowrap;
         }}
 
         @media (prefers-reduced-motion: reduce) {{
@@ -640,14 +650,15 @@ def _render_suspects(state: dict) -> None:
 
     # 인상착의는 단서를 인물과 잇는 유일한 통로다. 브리핑에서만 보여주고
     # 게임 중에 감추면 "굽이 얇은 구두"를 누구와도 연결할 수 없다.
+    # 동기는 노출하지 않는다 — 살해 동기는 플레이어가 단서로 밝혀낼 몫이다
+    # (특히 C의 동기를 적어두면 정답을 그대로 알려주는 셈이 된다).
     st.caption("인물 정보")
     for key, info in gs.SUSPECTS.items():
         with st.expander(f"{info['name']} · {info['gender']} {info['age']}"):
             st.markdown(
                 f":gray[관계] {info['relation']}  \n"
                 f":gray[인상착의] {info['appearance']}  \n"
-                f":gray[태도] {info['habit']}  \n"
-                f":gray[알려진 동기] {info['motive']}"
+                f":gray[태도] {info['habit']}"
             )
 
 
@@ -717,7 +728,8 @@ def render_start() -> None:
     플레이어가 모르는 정보(인물의 성별·관계 등)를 전제로 단서를 해석하게 하면
     안 되므로, 인물 정보를 처음부터 표로 공개한다.
     """
-    st.markdown("## 사건에 들어가며")
+    with st.container(key="briefing-title"):
+        st.markdown("## 사건에 들어가며")
 
     # 한 문장씩 줄을 끊는다. 통짜 문단은 어디까지 읽었는지 놓치기 쉽다.
     with st.container(key="briefing"):

@@ -177,8 +177,13 @@ def rummage() -> np.ndarray:
     그랬다). 서로 다른 세 가지 소리를 번갈아 넣어 '뭔가를 뒤지는 중'이라는
     장면을 만든다. 서랍이 스르륵 열렸다 톡 닫히고, 종이가 부스럭거리고,
     물건을 톡톡 내려놓는다. (달그락 소리는 단서음 종소리와 겹쳐서 뺐다.)
+    2번 반복, 약 4.6초.
     """
-    seconds = 8.0
+    # 뒤지는 '동작'을 또렷이 셀 수 있게 몇 번의 사이클로 나눈다.
+    # 한 사이클 = 서랍 → 종이 → 톡톡. 사이클 사이가 비어야 반복으로 읽힌다.
+    CYCLES = 2           # 뒤지는 동작 횟수. 늘리면 분주하게, 줄이면 여유롭게.
+    CYCLE_SPACING = 2.2  # 사이클 시작 간격(초)
+    seconds = 0.15 + CYCLES * CYCLE_SPACING
     count = int(RATE * seconds)
     total = np.zeros(count)
 
@@ -230,13 +235,8 @@ def rummage() -> np.ndarray:
         out[off : off + len(b)] += b * 0.8
         return out
 
-    # 뒤지는 '동작'을 또렷이 셀 수 있게, 촘촘히 늘어놓지 않고 몇 번의 뚜렷한
-    # 사이클로 나눈다. 한 사이클 = 서랍 열고 → (사이) → 종이 뒤적 → (사이) → 톡톡.
-    # 사이클 사이가 비어 있어야 "또 뒤진다"가 반복으로 읽힌다.
-    CYCLES = 4  # 뒤지는 동작 횟수. 늘리면 분주하게, 줄이면 여유롭게.
-    cycle_len = seconds / CYCLES
     for c in range(CYCLES):
-        base = c * cycle_len + 0.15
+        base = 0.15 + c * CYCLE_SPACING
         place(drawer_slide(), base)
         place(paper_rustle(), base + 0.65)
         place(wood_tap(), base + 1.35)
