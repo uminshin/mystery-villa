@@ -171,15 +171,18 @@ def render_bgm() -> None:
     브라우저는 사용자 조작 전에는 자동재생을 막는다. 메인 화면의
     '수사를 시작한다'를 누른 뒤에 이 요소가 처음 등장하므로 그 제약을 넘긴다.
     """
-    if not st.session_state.get("sound_enabled", True):
-        return
     data = load_audio("rain.wav")
     if data is None:
         return
-    # 컨테이너 키를 고정해 두면 턴이 바뀌어도 같은 요소로 취급되어
-    # 재생이 처음부터 다시 시작되지 않는다.
-    with st.container(key="bgm"):
-        st.audio(data, format="audio/wav", loop=True, autoplay=True)
+    # 컨테이너 키를 소리 상태(on/off)에 묶는다. 켜져 있는 동안에는 키가 계속
+    # "bgm-on"이라 턴이 바뀌어도 같은 요소로 취급되어 재생이 처음부터 다시
+    # 시작되지 않는다. 끄면 키가 "bgm-off"로 바뀌어 재생 중이던 <audio> 노드가
+    # 언마운트되므로 소리가 즉시 멈춘다. (키를 고정하면 off 후에도 loop 재생이
+    # DOM에 살아남아 멈추지 않는 버그가 있었다.)
+    enabled = st.session_state.get("sound_enabled", True)
+    with st.container(key=f"bgm-{'on' if enabled else 'off'}"):
+        if enabled:
+            st.audio(data, format="audio/wav", loop=True, autoplay=True)
 
 
 def render_clue_chime() -> None:
