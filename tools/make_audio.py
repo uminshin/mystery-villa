@@ -25,10 +25,10 @@ RNG = np.random.default_rng(20260806)  # 결과를 재현 가능하게 고정
 # 배경음은 나레이션을 읽는 데 방해되지 않을 만큼 낮춘다.
 LEVELS = {
     "rain": 0.40,
-    "interrogate": 0.50,
-    "search": 0.30,
-    "move": 0.62,
-    "clue": 0.44,
+    "interrogate": 0.50,  # 심문(메트로놈) — 플레이어가 "괜찮다"고 한 기준 크기
+    "search": 0.90,       # 조사 — "거의 안 들린다"는 피드백으로 크게 올림 (was 0.30)
+    "move": 0.85,         # 이동 (was 0.62)
+    "clue": 0.60,         # 단서 — 울리는 종이라 RMS가 커서 튄다. 보상음답게만 (was 0.44)
 }
 
 
@@ -203,8 +203,11 @@ def camera() -> np.ndarray:
         start = int(RATE * at)
         total[start : start + length] += sig * level
 
-    click(0.00, 2400.0, 1.0, 220.0)   # 미러 업
-    click(0.075, 1900.0, 0.85, 260.0)  # 셔터 닫힘
+    # 딸깍음은 짧고 뾰족해서 peak 정규화를 혼자 잡아먹는다. 그러면 나머지가
+    # 눌려 전체가 작게 들린다. 딸깍을 조금 낮추고 몸통(필름 감기)을 키워
+    # 지속 에너지를 늘려야 실제로 크게 들린다.
+    click(0.00, 2400.0, 0.75, 220.0)  # 미러 업
+    click(0.075, 1900.0, 0.6, 260.0)  # 셔터 닫힘
 
     # 필름 감기: 톱니가 걸리며 나는 규칙적인 잔음
     start = int(RATE * 0.24)
@@ -216,7 +219,7 @@ def camera() -> np.ndarray:
         spectral_noise(0.52, alpha=0.4, cutoff_hz=6000, highpass_hz=1200)[:wind_len]
         * envelope
         * (0.35 + 0.65 * teeth)
-        * 1.1
+        * 2.0
     )
     total[start : start + wind_len] += wind
 
