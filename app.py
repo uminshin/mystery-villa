@@ -2,7 +2,7 @@
 
 턴 진행 → 상태 갱신 → 엔딩 분기까지 도는 최소 버전.
 
-audio assets rev: 5 (조사 3회, 이동 5쌍(10걸음))
+audio assets rev: 6 (조사 2회로 복귀; 이동 5쌍 유지)
 """
 
 from __future__ import annotations
@@ -454,6 +454,7 @@ def start_new_game() -> None:
     st.session_state.ending = None
     st.session_state.pending_input = None
     st.session_state.log = []
+    st.session_state.gm_seq = 0  # 선택지 버튼 key용 응답 카운터 (request_gm에서 증가)
     # 메모 본체는 위젯이 아닌 이 딕셔너리다. 위젯 키에 직접 대입하면
     # "cannot be modified after the widget is instantiated" 예외가 나므로,
     # 판 번호를 올려 위젯 키 자체를 새로 만들고 값은 여기서 비운다.
@@ -500,6 +501,10 @@ def request_gm(player_input: str, narration_slot=None) -> None:
     st.session_state.pending_input = None
     st.session_state.history = history
     st.session_state.gm = gm
+    # 응답마다 1씩 증가. 선택지 버튼 key에 붙여, 이동(무료 행동)으로 턴이 안 바뀌어도
+    # 매 응답의 버튼 key가 달라지게 한다 — 직전 렌더의 클릭 상태가 새 선택지 버튼에
+    # 재사용되어 클릭이 씹히는 것을 막는다.
+    st.session_state.gm_seq = st.session_state.get("gm_seq", 0) + 1
     gs.apply_deltas(st.session_state.state, gm["suspicion_delta"], gm["trust_delta"])
 
 
@@ -1022,7 +1027,7 @@ def render_play() -> None:
                     if st.button(
                         choice["label"],
                         icon=ACTION_ICONS.get(choice["action"]),
-                        key=f"choice-{state['turn']}-{index}-{choice['action']}-{choice['target']}",
+                        key=f"choice-{st.session_state.get('gm_seq', 0)}-{index}-{choice['action']}-{choice['target']}",
                         width="stretch",
                     ):
                         # 순서가 중요하다: 소리를 먼저 붙여 즉시 재생시키고,
@@ -1034,7 +1039,10 @@ def render_play() -> None:
                         clue_slot.empty()
                         choice_slot.empty()
                         narration_slot.markdown(":gray[…]")
-                        take_action(choice, narration_slot=narration_slot)
+                        # GM 호출은 블로킹이다. 스피너가 없으면 이 사이(느린 응답·혼잡
+                        # 시 최대 60초) 화면이 멈춘 것처럼 보인다 — 명확히 '생성 중'을 알린다.
+                        with st.spinner("다음 장면을 받는 중…"):
+                            take_action(choice, narration_slot=narration_slot)
                         st.rerun()
 
         # 턴이 남았어도 눈치챘으면 바로 지목할 수 있게 한다.
