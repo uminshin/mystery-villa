@@ -2,7 +2,7 @@
 
 턴 진행 → 상태 갱신 → 엔딩 분기까지 도는 최소 버전.
 
-audio assets rev: 4 (조사 2회 반복으로 축소)
+audio assets rev: 5 (조사 3회, 이동 5쌍(10걸음))
 """
 
 from __future__ import annotations
@@ -656,7 +656,7 @@ def _render_suspects(state: dict) -> None:
     for key, info in gs.SUSPECTS.items():
         with st.expander(f"{info['name']} · {info['gender']} {info['age']}"):
             st.markdown(
-                f":gray[관계] {info['relation']}  \n"
+                f":gray[관계] {info['relation_public']}  \n"
                 f":gray[인상착의] {info['appearance']}  \n"
                 f":gray[태도] {info['habit']}"
             )
@@ -777,7 +777,7 @@ def render_start() -> None:
     with st.container(key="people-table"):
         rows = "\n".join(
             f"| {info['name']}<br>:gray[{info['gender']} · {info['age']}] "
-            f"| {info['relation']} "
+            f"| {info['relation_public']} "
             f"| {info['appearance']}<br>:gray[{info['habit']}] |"
             for info in gs.SUSPECTS.values()
         )
