@@ -1038,11 +1038,13 @@ def render_play() -> None:
                         )
                         clue_slot.empty()
                         choice_slot.empty()
-                        narration_slot.markdown(":gray[…]")
-                        # GM 호출은 블로킹이다. 스피너가 없으면 이 사이(느린 응답·혼잡
-                        # 시 최대 60초) 화면이 멈춘 것처럼 보인다 — 명확히 '생성 중'을 알린다.
-                        with st.spinner("다음 장면을 받는 중…"):
-                            take_action(choice, narration_slot=narration_slot)
+                        # 로딩 표시는 반드시 '방금 비우지 않은' 슬롯(narration_slot)에만
+                        # 그린다. choice_slot을 empty()한 직후 그 안에 새 위젯(st.spinner
+                        # 등)을 그리면 Streamlit 엘리먼트 트리가 깨져 화면이 백지가 된다
+                        # ("'setIn' cannot be called on an ElementNode"). GM 호출은
+                        # 블로킹이라, 이 문구가 응답 도착 전까지 '진행 중'을 대신 알린다.
+                        narration_slot.markdown(":gray[다음 장면을 받는 중…]")
+                        take_action(choice, narration_slot=narration_slot)
                         st.rerun()
 
         # 턴이 남았어도 눈치챘으면 바로 지목할 수 있게 한다.
