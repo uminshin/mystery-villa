@@ -128,100 +128,114 @@ def rain() -> np.ndarray:
     return loop_seamlessly(normalize(mixed, LEVELS["rain"]))
 
 
-def door() -> np.ndarray:
-    """이동음. 문을 열고 나가 다른 문으로 들어가는 소리.
+def footsteps() -> np.ndarray:
+    """이동음. 다른 방으로 걸어가는 발소리(약 8초).
 
-    긴 경첩 스윕(0.72초)을 넣었더니 사인파 신음처럼 들려서 걷어냈다.
-    합성으로 신뢰할 수 있는 건 '짧은 충격 + 나무 공진'이다.
-    0.85초로는 너무 짧아 '문 두 짝'으로 늘렸다 —
-    걸쇠 → 닫힘 → (사이) → 먼 쪽 걸쇠 → 닫힘. 방을 옮긴 느낌이 난다.
+    발소리는 '무슨 소리인지'가 즉시 읽히는 몇 안 되는 합성음이다. 한 걸음은
+    발뒤꿈치의 낮은 쿵 + 바닥 접촉 트랜지언트 + 앞꿈치가 스치는 짧고 밝은
+    잡음으로 만든다. 좌우가 번갈아 걷는 느낌이 나도록 세기와 음정을 흔들고,
+    걸음 간격에도 미세한 흔들림을 줘서 기계적으로 들리지 않게 한다.
     """
-    seconds = 1.75
+    seconds = 8.0
     count = int(RATE * seconds)
     total = np.zeros(count)
 
-    def wood_hit(length: float, partials, noise_decay: float, level: float):
-        """(주파수, 감쇠, 세기) 목록으로 나무 공진 한 방을 만든다."""
-        n = int(RATE * length)
-        t = np.arange(n) / RATE
-        sig = np.zeros(n)
-        for freq, decay, weight in partials:
-            sig += np.sin(2 * np.pi * freq * t) * np.exp(-t * decay) * weight
-        sig += (
-            spectral_noise(length, alpha=0.5, cutoff_hz=4000, highpass_hz=250)[:n]
-            * np.exp(-t * noise_decay)
-            * 1.6
-        )
-        return sig * level, n
+    def footstep(level: float, body_hz: float) -> np.ndarray:
+        length = int(RATE * 0.18)
+        t = np.arange(length) / RATE
+        # 발뒤꿈치: 낮은 몸통 + 빠른 감쇠
+        body = np.sin(2 * np.pi * body_hz * t) + 0.5 * np.sin(2 * np.pi * body_hz * 1.6 * t)
+        body *= np.exp(-t * 42.0)
+        # 바닥 접촉: 넓은 대역 충격, 아주 짧게
+        thud = spectral_noise(0.18, alpha=0.7, cutoff_hz=900, highpass_hz=60)[:length]
+        thud *= np.exp(-t * 55.0)
+        # 앞꿈치 스침: 짧고 밝은 잡음
+        scuff = spectral_noise(0.18, alpha=0.3, cutoff_hz=6000, highpass_hz=1800)[:length]
+        scuff *= np.exp(-t * 120.0) * 0.5
+        return (body * 1.0 + thud * 1.2 + scuff) * level
 
-    def place(signal, at: float):
-        start = int(RATE * at)
-        end = min(count, start + len(signal))
-        total[start:end] += signal[: end - start]
-
-    # 나가는 문: 걸쇠 딸깍 → 문판이 울리며 닫힘
-    latch, _ = wood_hit(0.09, [(1180.0, 120.0, 0.5), (640.0, 90.0, 0.35)], 300.0, 0.85)
-    place(latch, 0.02)
-    thud, _ = wood_hit(
-        0.45, [(196.0, 26.0, 0.9), (312.0, 34.0, 0.5), (520.0, 52.0, 0.25)], 90.0, 1.0
-    )
-    place(thud, 0.34)
-
-    # 들어가는 문: 조금 멀리서(작게, 저역 위주) 같은 두 소리가 반복된다
-    latch2, _ = wood_hit(0.09, [(1040.0, 130.0, 0.4), (580.0, 95.0, 0.3)], 300.0, 0.45)
-    place(latch2, 1.00)
-    thud2, _ = wood_hit(
-        0.45, [(178.0, 24.0, 0.9), (286.0, 32.0, 0.4), (470.0, 50.0, 0.18)], 90.0, 0.62
-    )
-    place(thud2, 1.28)
+    step_time = 0.05
+    idx = 0
+    length = int(RATE * 0.18)
+    while True:
+        start = int(RATE * step_time)
+        if start + length >= count:
+            break
+        # 좌우 번갈아: 한쪽에 accent, 음정도 살짝 다르게
+        accent = 1.0 if idx % 2 == 0 else 0.78
+        body_hz = 96.0 if idx % 2 == 0 else 112.0
+        total[start : start + length] += footstep(accent, body_hz + RNG.uniform(-6, 6))
+        step_time += 0.46 + RNG.uniform(-0.04, 0.04)
+        idx += 1
 
     return normalize(total, LEVELS["move"])
 
 
-def camera() -> np.ndarray:
-    """조사음. 현장 사진을 찍는 셔터 소리.
+def rummage() -> np.ndarray:
+    """조사음. 방을 뒤지는 소리(약 8초) — 서랍 여닫기 + 종이 뒤적임 + 작은 달그락.
 
-    종이 스치는 소리는 '무슨 소리인지 모르겠다'는 반응이 나왔다.
-    탐정이 현장에서 하는 행동 중 소리가 분명한 건 사진 촬영이다.
-    셔터는 ① 미러가 올라가는 딸깍 ② 곧바로 닫히는 딸깍 ③ 필름 감기는 스르륵
-    세 부분으로 되어 있고, 이 구조가 있으면 바로 카메라로 들린다.
+    한 가지 소리만으로는 '무슨 소리인지'가 안 잡힌다(예전 셔터·종이 넘기기가
+    그랬다). 서로 다른 세 가지 단서를 번갈아 넣어 '뭔가를 뒤지는 중'이라는
+    장면을 만든다. 서랍이 스르륵 열렸다 톡 닫히고, 종이가 부스럭거리고,
+    가끔 작은 물건이 달그락 부딪친다.
     """
-    seconds = 0.95
+    seconds = 8.0
     count = int(RATE * seconds)
     total = np.zeros(count)
 
-    def click(at: float, pitch: float, level: float, decay: float):
-        length = int(RATE * 0.06)
-        t = np.arange(length) / RATE
-        sig = np.sin(2 * np.pi * pitch * t) * np.exp(-t * decay) * 0.6
-        sig += np.sin(2 * np.pi * pitch * 1.7 * t) * np.exp(-t * decay * 1.4) * 0.3
-        sig += (
-            spectral_noise(0.06, alpha=0.2, cutoff_hz=9000, highpass_hz=2000)[:length]
-            * np.exp(-t * 380.0)
-            * 1.8
-        )
+    def place(sig: np.ndarray, at: float) -> None:
         start = int(RATE * at)
-        total[start : start + length] += sig * level
+        end = min(count, start + len(sig))
+        total[start:end] += sig[: end - start]
 
-    # 딸깍음은 짧고 뾰족해서 peak 정규화를 혼자 잡아먹는다. 그러면 나머지가
-    # 눌려 전체가 작게 들린다. 딸깍을 조금 낮추고 몸통(필름 감기)을 키워
-    # 지속 에너지를 늘려야 실제로 크게 들린다.
-    click(0.00, 2400.0, 0.75, 220.0)  # 미러 업
-    click(0.075, 1900.0, 0.6, 260.0)  # 셔터 닫힘
+    def drawer_slide() -> np.ndarray:
+        length = 0.5
+        n = int(RATE * length)
+        t = np.arange(n) / RATE
+        # 나무 위 미끄러짐: 대역 잡음이 부풀었다 잦아든다
+        env = np.sin(np.pi * np.clip(t / t[-1], 0, 1)) ** 1.2
+        slide = spectral_noise(length, alpha=0.6, cutoff_hz=2000, highpass_hz=200)[:n] * env * 2.4
+        # 끝에 톡 닫히는 나무 공진
+        thunk_len = int(RATE * 0.12)
+        tt = np.arange(thunk_len) / RATE
+        thunk = (np.sin(2 * np.pi * 180 * tt) + 0.4 * np.sin(2 * np.pi * 300 * tt)) * np.exp(-tt * 40)
+        slide[-thunk_len:] += thunk * 0.9
+        return slide
 
-    # 필름 감기: 톱니가 걸리며 나는 규칙적인 잔음
-    start = int(RATE * 0.24)
-    wind_len = int(RATE * 0.52)
-    t = np.arange(wind_len) / RATE
-    envelope = np.sin(np.pi * np.clip(t / t[-1], 0, 1)) ** 0.8
-    teeth = (np.sin(2 * np.pi * 62.0 * t) > 0.55).astype(float)
-    wind = (
-        spectral_noise(0.52, alpha=0.4, cutoff_hz=6000, highpass_hz=1200)[:wind_len]
-        * envelope
-        * (0.35 + 0.65 * teeth)
-        * 2.0
-    )
-    total[start : start + wind_len] += wind
+    def paper_rustle() -> np.ndarray:
+        length = 0.55
+        n = int(RATE * length)
+        t = np.arange(n) / RATE
+        base = spectral_noise(length, alpha=0.3, cutoff_hz=5000, highpass_hz=1200)[:n]
+        env = np.zeros(n)
+        for center in (0.10, 0.28, 0.44):  # 몇 장 넘기듯 봉우리 여럿
+            env += np.exp(-((t - center) ** 2) / 0.0025)
+        return base * env * 1.8
+
+    def clink() -> np.ndarray:
+        length = 0.3
+        n = int(RATE * length)
+        t = np.arange(n) / RATE
+        # 작은 금속 달그락: 비조화 배음 + 짧은 감쇠
+        f = 2600.0
+        sig = (
+            np.sin(2 * np.pi * f * t)
+            + 0.5 * np.sin(2 * np.pi * f * 2.76 * t)
+            + 0.3 * np.sin(2 * np.pi * f * 5.1 * t)
+        ) * np.exp(-t * 26.0)
+        ramp = int(RATE * 0.003)
+        sig[:ramp] *= np.linspace(0, 1, ramp)
+        return sig * 0.45
+
+    # 8초를 서랍 → 종이 → 달그락 순으로 느슨한 리듬으로 채운다.
+    builders = [drawer_slide, paper_rustle, clink]
+    at = 0.1
+    i = 0
+    while at < seconds - 0.6:
+        sig = builders[i % 3]()
+        place(sig, at)
+        at += len(sig) / RATE + RNG.uniform(0.12, 0.32)
+        i += 1
 
     return normalize(total, LEVELS["search"])
 
@@ -294,22 +308,6 @@ def clue_chime() -> np.ndarray:
     return normalize(total, LEVELS["clue"])
 
 
-def rustle() -> np.ndarray:
-    """조사음. 종이를 넘기며 스치는 소리.
-
-    9kHz까지 열어두면 '치익' 하고 날카롭게 튀어 다른 효과음보다 크게 들린다.
-    상단을 4.5kHz로 눌러 둔다.
-    """
-    seconds = 0.85
-    count = int(RATE * seconds)
-    time = np.arange(count) / RATE
-    base = spectral_noise(seconds, alpha=0.3, cutoff_hz=4200, highpass_hz=900)[:count]
-    # 두 번 스치도록 진폭에 봉우리를 만든다
-    envelope = np.exp(-((time - 0.12) ** 2) / 0.0035)
-    envelope += 0.8 * np.exp(-((time - 0.46) ** 2) / 0.0050)
-    return normalize(base * envelope, LEVELS["search"])
-
-
 def write_wav(name: str, signal: np.ndarray) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     samples = np.clip(signal, -1.0, 1.0)
@@ -328,8 +326,8 @@ def main() -> None:
     print(f"합성 -> {OUT_DIR}")
     write_wav("rain.wav", rain())
     write_wav("interrogate.wav", metronome())
-    write_wav("move.wav", door())
-    write_wav("search.wav", camera())
+    write_wav("move.wav", footsteps())
+    write_wav("search.wav", rummage())
     write_wav("clue.wav", clue_chime())
     print("완료")
 
