@@ -129,15 +129,18 @@ def rain() -> np.ndarray:
 
 
 def footsteps() -> np.ndarray:
-    """이동음. 다른 방으로 걸어가는 발소리(약 8초).
+    """이동음. 다른 방으로 걸어가는 발소리(8걸음 = 강-약 4쌍, 약 5초).
 
     발소리는 '무슨 소리인지'가 즉시 읽히는 몇 안 되는 합성음이다. 한 걸음은
     발뒤꿈치의 낮은 쿵 + 바닥 접촉 트랜지언트 + 앞꿈치가 스치는 짧고 밝은
     잡음으로 만든다. 좌우가 번갈아 걷는 느낌이 나도록 세기와 음정을 흔들고,
     걸음 간격에도 미세한 흔들림을 줘서 기계적으로 들리지 않게 한다.
     """
-    seconds = 8.0
-    count = int(RATE * seconds)
+    # '툭(강) 탁(약)'이 한 쌍. STEPS=8 → 4쌍. 늘리면 더 오래 걷는 소리가 된다.
+    STEPS = 8
+    STEP_INTERVAL = 0.62  # 걸음 간격(초). 촘촘하면 '두두두'로 뭉개진다.
+    length = int(RATE * 0.18)
+    count = int(RATE * (0.1 + STEPS * STEP_INTERVAL + 0.3))
     total = np.zeros(count)
 
     def footstep(level: float, body_hz: float) -> np.ndarray:
@@ -154,22 +157,15 @@ def footsteps() -> np.ndarray:
         scuff *= np.exp(-t * 120.0) * 0.5
         return (body * 1.0 + thud * 1.2 + scuff) * level
 
-    # 간격을 넉넉히 둬 한 걸음 한 걸음이 또렷이 세어지게 한다(메트로놈처럼).
-    # 촘촘하면 '두두두'로 뭉개져 발소리로 안 읽힌다.
-    STEP_INTERVAL = 0.62  # 초. 줄이면 촘촘·빠르게, 늘리면 성기게·느리게 걷는다.
+    # 걸음 하나하나가 또렷이 세어지도록(메트로놈처럼) 간격을 넉넉히 둔다.
     step_time = 0.1
-    idx = 0
-    length = int(RATE * 0.18)
-    while True:
+    for idx in range(STEPS):
         start = int(RATE * step_time)
-        if start + length >= count:
-            break
         # 좌우 번갈아: 한쪽에 accent, 음정도 살짝 다르게
         accent = 1.0 if idx % 2 == 0 else 0.78
         body_hz = 96.0 if idx % 2 == 0 else 112.0
         total[start : start + length] += footstep(accent, body_hz + RNG.uniform(-6, 6))
         step_time += STEP_INTERVAL + RNG.uniform(-0.02, 0.02)
-        idx += 1
 
     return normalize(total, LEVELS["move"])
 
@@ -178,9 +174,9 @@ def rummage() -> np.ndarray:
     """조사음. 방을 뒤지는 소리(약 8초) — 서랍 여닫기 + 종이 뒤적임 + 작은 달그락.
 
     한 가지 소리만으로는 '무슨 소리인지'가 안 잡힌다(예전 셔터·종이 넘기기가
-    그랬다). 서로 다른 세 가지 단서를 번갈아 넣어 '뭔가를 뒤지는 중'이라는
+    그랬다). 서로 다른 세 가지 소리를 번갈아 넣어 '뭔가를 뒤지는 중'이라는
     장면을 만든다. 서랍이 스르륵 열렸다 톡 닫히고, 종이가 부스럭거리고,
-    가끔 작은 물건이 달그락 부딪친다.
+    물건을 톡톡 내려놓는다. (달그락 소리는 단서음 종소리와 겹쳐서 뺐다.)
     """
     seconds = 8.0
     count = int(RATE * seconds)
@@ -215,23 +211,27 @@ def rummage() -> np.ndarray:
             env += np.exp(-((t - center) ** 2) / 0.0025)
         return base * env * 1.8
 
-    def clink() -> np.ndarray:
-        length = 0.3
-        n = int(RATE * length)
-        t = np.arange(n) / RATE
-        # 작은 금속 달그락: 비조화 배음 + 짧은 감쇠
-        f = 2600.0
-        sig = (
-            np.sin(2 * np.pi * f * t)
-            + 0.5 * np.sin(2 * np.pi * f * 2.76 * t)
-            + 0.3 * np.sin(2 * np.pi * f * 5.1 * t)
-        ) * np.exp(-t * 26.0)
-        ramp = int(RATE * 0.003)
-        sig[:ramp] *= np.linspace(0, 1, ramp)
-        return sig * 0.45
+    def wood_tap() -> np.ndarray:
+        # 물건을 톡톡 내려놓거나 나무를 두드리는 소리. 예전 '달그락'은 금속 배음이
+        # 울려서 단서음(종소리 '띵')과 겹쳤다. 배음을 쌓지 않고 아주 빠르게
+        # 감쇠시켜 '울림 없는 톡'으로 만든다 — 종소리와 확실히 구분된다.
+        def one(f: float, length: float = 0.1) -> np.ndarray:
+            n = int(RATE * length)
+            t = np.arange(n) / RATE
+            body = np.sin(2 * np.pi * f * t) * np.exp(-t * 95.0)  # 빠른 감쇠 = 울림 없음
+            knock = spectral_noise(length, alpha=0.4, cutoff_hz=3200, highpass_hz=350)[:n]
+            knock *= np.exp(-t * 150.0) * 1.5
+            return body * 0.6 + knock
+
+        out = np.zeros(int(RATE * 0.32))
+        a, b = one(330.0), one(280.0)  # 톡 … 톡 (약간 다른 음정으로 두 번)
+        out[: len(a)] += a
+        off = int(RATE * 0.14)
+        out[off : off + len(b)] += b * 0.8
+        return out
 
     # 뒤지는 '동작'을 또렷이 셀 수 있게, 촘촘히 늘어놓지 않고 몇 번의 뚜렷한
-    # 사이클로 나눈다. 한 사이클 = 서랍 열고 → (사이) → 종이 뒤적 → (사이) → 달그락.
+    # 사이클로 나눈다. 한 사이클 = 서랍 열고 → (사이) → 종이 뒤적 → (사이) → 톡톡.
     # 사이클 사이가 비어 있어야 "또 뒤진다"가 반복으로 읽힌다.
     CYCLES = 4  # 뒤지는 동작 횟수. 늘리면 분주하게, 줄이면 여유롭게.
     cycle_len = seconds / CYCLES
@@ -239,7 +239,7 @@ def rummage() -> np.ndarray:
         base = c * cycle_len + 0.15
         place(drawer_slide(), base)
         place(paper_rustle(), base + 0.65)
-        place(clink(), base + 1.35)
+        place(wood_tap(), base + 1.35)
 
     return normalize(total, LEVELS["search"])
 

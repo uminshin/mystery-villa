@@ -2,7 +2,7 @@
 
 턴 진행 → 상태 갱신 → 엔딩 분기까지 도는 최소 버전.
 
-audio assets rev: 2 (발소리/뒤지기 재설계 + 반복 조정 반영)
+audio assets rev: 3 (이동 8걸음으로 축소, 조사 달그락→나무 톡톡)
 """
 
 from __future__ import annotations
