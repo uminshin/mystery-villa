@@ -10,6 +10,7 @@ from pathlib import Path
 
 import anthropic
 import streamlit as st
+import streamlit.components.v1 as components
 
 import game_state as gs
 from gm import GMError, call_gm
@@ -166,23 +167,50 @@ def load_audio(name: str) -> bytes | None:
 
 
 def render_bgm() -> None:
-    """폭우 보량음. 게임이 시작된 뒤에만 재생한다.
+    """폭우 배경음(빗소리). 게임이 시작된 뒤에만 재생한다.
 
-    브라우저는 사용자 조작 전에는 자동재생을 막는다. 메인 화면의
-    '수사를 시작한다'를 누른 뒤에 이 요소가 처음 등장하므로 그 제약을 넘긴다.
+    이 토글은 **배경음만** 제어한다 — 행동 효과음은 토글과 무관하게 항상 난다.
+
+    구현 노트: st.audio에는 볼륨/음소거 파라미터가 없고, 컨테이너 키를 바꿔도
+    이미 loop 재생 중인 <audio>는 멈추지 않는다(그래서 게임 중 토글이 안 먹혔다).
+    그래서 오디오는 키를 고정해 **항상 한 번만** 만들어 두고(턴마다 리셋 안 됨),
+    실제 on/off는 매 rerun마다 JS로 이 <audio>의 재생/음소거를 직접 제어한다.
+    부모 문서에서 배경음만 콕 집으려고 st-key-bgm 컨테이너 안의 audio를 고른다.
     """
     data = load_audio("rain.wav")
     if data is None:
         return
-    # 컨테이너 키를 소리 상태(on/off)에 묶는다. 켜져 있는 동안에는 키가 계속
-    # "bgm-on"이라 턴이 바뀌어도 같은 요소로 취급되어 재생이 처음부터 다시
-    # 시작되지 않는다. 끄면 키가 "bgm-off"로 바뀌어 재생 중이던 <audio> 노드가
-    # 언마운트되므로 소리가 즉시 멈춘다. (키를 고정하면 off 후에도 loop 재생이
-    # DOM에 살아남아 멈추지 않는 버그가 있었다.)
     enabled = st.session_state.get("sound_enabled", True)
-    with st.container(key=f"bgm-{'on' if enabled else 'off'}"):
-        if enabled:
-            st.audio(data, format="audio/wav", loop=True, autoplay=True)
+    with st.container(key="bgm"):
+        st.audio(data, format="audio/wav", loop=True, autoplay=True)
+    # height=0 컴포넌트로 JS만 주입한다. 컴포넌트 iframe은 같은 오리진이라
+    # window.parent.document로 앱 본문의 <audio>에 접근할 수 있다.
+    components.html(
+        f"""
+        <script>
+        const enabled = {str(enabled).lower()};
+        const doc = window.parent.document;
+        const apply = () => {{
+            const el = doc.querySelector('.st-key-bgm audio');
+            if (!el) return false;
+            if (enabled) {{
+                el.muted = false;
+                if (el.paused) el.play().catch(() => {{}});
+            }} else {{
+                el.pause();
+            }}
+            return true;
+        }};
+        // 오디오가 아직 DOM에 없을 수 있으니, 없으면 잠깐 지켜보다 적용한다.
+        if (!apply()) {{
+            const obs = new MutationObserver(() => {{ if (apply()) obs.disconnect(); }});
+            obs.observe(doc.body, {{childList: true, subtree: true}});
+            setTimeout(() => obs.disconnect(), 4000);
+        }}
+        </script>
+        """,
+        height=0,
+    )
 
 
 def render_clue_chime() -> None:
@@ -191,9 +219,9 @@ def render_clue_chime() -> None:
     클릭 즉시 울리게 했더니 조사음을 덮어버렸다. 이 함수는 스트리밍이 끝나고
     다시 그려지는 회차에서 호출되므로 자연히 나레이션 뒤에 온다.
     키에 턴을 넣어 한 번만 재생된다.
+
+    효과음이므로 배경음 토글(sound_enabled)과 무관하게 항상 재생한다.
     """
-    if not st.session_state.get("sound_enabled", True):
-        return
     if not st.session_state.get("found"):
         return
     data = load_audio("clue.wav")
@@ -204,7 +232,7 @@ def render_clue_chime() -> None:
 
 
 def sound_toggle(where: str, help_text: str | None = None) -> None:
-    """소리 on/off 토글.
+    """배경음(빗소리) on/off 토글. 효과음은 이 토글과 무관하게 항상 난다.
 
     값을 위젯 키에만 두면 안 된다. 토글이 없는 화면(지목·엔딩)으로 넘어가면
     Streamlit이 그 위젯 상태를 버리고, 다음 회차에 기본값(켜짐)으로 되살아난다.
@@ -212,7 +240,7 @@ def sound_toggle(where: str, help_text: str | None = None) -> None:
     sound_enabled에 두고, 위젯에는 value로 넣어 준다.
     """
     st.session_state.sound_enabled = st.toggle(
-        "소리 켜기",
+        "배경음",
         value=st.session_state.get("sound_enabled", True),
         key=f"sound_toggle_{where}",
         help=help_text,
@@ -225,9 +253,9 @@ def play_sound(slot, name: str) -> None:
     이전에는 다음 rerun에서 오디오 요소를 만들었기 때문에 나레이션이 다 나온
     뒤에야 소리가 났다. 클릭 시점에 넘겨받은 슬롯에 바로 그려서 붙는 즉시
     재생되게 한다.
+
+    효과음이므로 배경음 토글(sound_enabled)과 무관하게 항상 재생한다.
     """
-    if not st.session_state.get("sound_enabled", True):
-        return
     data = load_audio(name)
     if data is None:
         return
@@ -839,7 +867,8 @@ def render_home() -> None:
         with st.container(border=True):
             sound_toggle(
                 "home",
-                help_text="폭우 보량음과 행동 효과음. 게임 중에도 끌 수 있습니다.",
+                help_text="빗소리 배경음을 켜고 끕니다. 게임 중에도 바뀝니다. "
+                "(행동 효과음은 항상 재생됩니다.)",
             )
 
 
