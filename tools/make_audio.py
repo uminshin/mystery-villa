@@ -123,44 +123,78 @@ def rain() -> np.ndarray:
     gust = 1.0 + 0.22 * np.sin(2 * np.pi * 0.06 * time + 0.4)
     gust *= 1.0 + 0.12 * np.sin(2 * np.pi * 0.017 * time)
 
-    mixed = (sheet + mid + body + grains) * gust
+    # 배 타고 건너온 섬이다. 파도를 아주 낮게 두 번 얹어 위치감을 준다.
+    # 비의 중역을 덮지 않을 만큼만(0.35) 섞는다.
+    swell = waves(seconds, count=2) * 0.35
+
+    mixed = (sheet + mid + body + grains) * gust + swell
     return loop_seamlessly(normalize(mixed, LEVELS["rain"]))
 
 
 def door() -> np.ndarray:
-    """이동음. 걸쇠가 딸깍 열리고 경첩이 삐걱이는 소리.
+    """이동음. 걸쇠가 열리고 문이 닫히는 소리.
 
-    발소리는 합성으로 '노크'처럼 들려서 문 여는 소리로 바꿨다.
-    경첩은 주파수가 천천히 올라가는 공진 + 미세한 떨림으로 만든다.
+    긴 경첩 스윕(0.72초)을 넣었더니 사인파 신음처럼 들려서 걷어냈다.
+    합성으로 신뢰할 수 있는 건 '짧은 충격 + 나무 공진'이다.
+    그래서 ① 걸쇠 딸깍 ② 문이 닫히며 나는 나무 울림 두 개만 남겼다.
     """
-    seconds = 1.1
+    seconds = 0.85
     count = int(RATE * seconds)
-    time = np.arange(count) / RATE
     total = np.zeros(count)
 
-    # 걸쇠
-    latch_len = int(RATE * 0.12)
-    lt = np.arange(latch_len) / RATE
-    latch = np.sin(2 * np.pi * 780.0 * lt) * np.exp(-lt * 90.0) * 0.7
-    latch += RNG.standard_normal(latch_len) * np.exp(-lt * 260.0) * 0.5
-    total[:latch_len] += latch
+    def wood_hit(length: float, partials, noise_decay: float, level: float):
+        """(주파수, 감쇠, 세기) 목록으로 나무 공진 한 방을 만든다."""
+        n = int(RATE * length)
+        t = np.arange(n) / RATE
+        sig = np.zeros(n)
+        for freq, decay, weight in partials:
+            sig += np.sin(2 * np.pi * freq * t) * np.exp(-t * decay) * weight
+        sig += (
+            spectral_noise(length, alpha=0.5, cutoff_hz=4000, highpass_hz=250)[:n]
+            * np.exp(-t * noise_decay)
+            * 1.6
+        )
+        return sig * level, n
 
-    # 경첩 삐걱: 220Hz에서 380Hz로 천천히 올라가며 떨린다
-    start = int(RATE * 0.16)
-    creak_len = int(RATE * 0.72)
-    ct = np.arange(creak_len) / RATE
-    sweep = 220.0 + 160.0 * (ct / ct[-1]) ** 1.4
-    phase = 2 * np.pi * np.cumsum(sweep) / RATE
-    tremolo = 1.0 + 0.45 * np.sin(2 * np.pi * 17.0 * ct)
-    envelope = np.sin(np.pi * np.clip(ct / ct[-1], 0, 1)) ** 0.7
-    creak = np.sin(phase) * tremolo * envelope * 0.55
-    creak += np.sin(2 * phase) * envelope * 0.18
-    creak += spectral_noise(0.72, alpha=0.6, cutoff_hz=3000, highpass_hz=600)[
-        :creak_len
-    ] * envelope * 1.2
-    total[start : start + creak_len] += creak
+    # 걸쇠: 짧고 밝은 딸깍
+    latch, n = wood_hit(
+        0.09, [(1180.0, 120.0, 0.5), (640.0, 90.0, 0.35)], 300.0, 0.85
+    )
+    total[:n] += latch
+
+    # 문이 닫히며 판이 울리는 소리. 나무 공진은 저·중역 몇 개로 충분하다.
+    start = int(RATE * 0.30)
+    thud, n = wood_hit(
+        0.45,
+        [(196.0, 26.0, 0.9), (312.0, 34.0, 0.5), (520.0, 52.0, 0.25)],
+        90.0,
+        1.0,
+    )
+    total[start : start + n] += thud
 
     return normalize(total, LEVELS["move"])
+
+
+def waves(seconds: float, count: int) -> np.ndarray:
+    """파도가 절벽을 치는 소리. 비 위에 아주 드물게 얹는다.
+
+    파도는 '느리게 부풀었다 빠지는' 광대역 소음이다. 저역이 두꺼우면
+    비의 중역을 덮어버리므로 대역을 200~2000Hz로 좁혀 둔다.
+    """
+    total = np.zeros(int(RATE * seconds))
+    span = int(RATE * 3.2)
+    positions = np.linspace(0, len(total) - span, count).astype(int)
+    for index, start in enumerate(positions):
+        t = np.arange(span) / RATE
+        # 부딪히고(빠른 상승) 물러나는(느린 하강) 비대칭 포락선
+        rise = np.clip(t / 0.45, 0, 1) ** 1.6
+        fall = np.exp(-np.clip(t - 0.45, 0, None) * 0.85)
+        envelope = rise * fall
+        body = spectral_noise(
+            span / RATE, alpha=0.7, cutoff_hz=2000, highpass_hz=200
+        )[:span]
+        total[start : start + span] += body * envelope * (0.9 if index % 2 else 0.6)
+    return total
 
 
 def tick(duration: float, pitch: float, brightness: float) -> np.ndarray:

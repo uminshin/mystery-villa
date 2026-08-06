@@ -179,19 +179,20 @@ def render_bgm() -> None:
         st.audio(data, format="audio/wav", loop=True, autoplay=True)
 
 
-def sound_for_choice(state: dict, choice: dict[str, str]) -> str:
-    """이 행동에 어떤 소리를 낼지 고른다.
+def render_clue_chime() -> None:
+    """단서 발견음. 나레이션이 다 나온 뒤에 울린다.
 
-    단서가 나올지는 클릭 시점에 이미 정해져 있다(조사할 장소에 미발견 단서가
-    있는지 보면 된다). 그래서 발견음을 나레이션이 끝난 뒤로 미루지 않고
-    누른 즉시 울릴 수 있다. 단서가 나오는 조사는 종소리로 대체한다 —
-    종이 스치는 소리와 겹치면 둘 다 흐려진다.
+    클릭 즉시 울리게 했더니 조사음을 덮어버렸다. 이 함수는 스트리밍이 끝나고
+    다시 그려지는 회차에서 호출되므로 자연히 나레이션 뒤에 온다.
+    키에 턴을 넣어 한 번만 재생된다.
     """
-    if choice["action"] == "조사" and gs.undiscovered_clue_at(
-        state, state["location"]
-    ):
-        return "clue.wav"
-    return ACTION_SOUNDS.get(choice["action"], "")
+    if not st.session_state.get("sound_on") or not st.session_state.get("found"):
+        return
+    data = load_audio("clue.wav")
+    if data is None:
+        return
+    with st.container(key=f"chime-{st.session_state.state['turn']}"):
+        st.audio(data, format="audio/wav", autoplay=True)
 
 
 def play_sound(slot, name: str) -> None:
@@ -217,11 +218,16 @@ def inject_css() -> None:
     """
     st.html(
         f"""<style>
-        .st-key-narration p,
-        .st-key-briefing p {{
+        .st-key-narration p {{
             font-size: 1.2rem;
             line-height: 1.9;
             letter-spacing: 0.01em;
+        }}
+        /* 브리핑 도입부는 이 게임의 첫 화면이다. 나레이션보다 한 단 크게. */
+        .st-key-briefing p {{
+            font-size: 1.42rem;
+            line-height: 1.85;
+            letter-spacing: 0.005em;
         }}
         .st-key-location h1 {{
             margin-bottom: 0.1rem;
@@ -394,9 +400,16 @@ def take_action(choice: dict[str, str], narration_slot=None) -> None:
         narration_slot=narration_slot,
     )
 
+    # 단서를 찾았으면 수사 기록을 단서 면으로 데려간다. 여기서 panel_view에
+    # 바로 대입하면 이번 회차에 이미 그려진 위젯이라 예외가 난다 — 그래서
+    # 플래그만 남기고, 다음 회차에서 위젯이 그려지기 전에 소비한다.
+    if found:
+        st.session_state.jump_to_clues = True
+
     # 탐정 노트에 자동으로 한 줄 남긴다. 플레이어가 직접 적는 메모와 별개로,
     # "몇 턴에 어디서 무엇을 했는지"는 기계가 기억해 주는 편이 낫다.
     if st.session_state.error is None:
+        gm_data = st.session_state.gm or {}
         st.session_state.log.append(
             {
                 "turn": state["turn"],
@@ -404,6 +417,9 @@ def take_action(choice: dict[str, str], narration_slot=None) -> None:
                 "action": choice["action"],
                 "label": choice["label"],
                 "found": found["name"] if found else None,
+                # 의심도·신뢰도가 왜 움직였는지. 이게 없으면 나중에
+                # "이 숫자는 무엇 때문이었나"를 되짚을 수 없다.
+                "note": (gm_data.get("change_note") or "").strip(),
             }
         )
 
@@ -411,22 +427,38 @@ def take_action(choice: dict[str, str], narration_slot=None) -> None:
     # 메모를 정리할 시간을 준 뒤, 플레이어가 직접 지목 화면으로 들어가야 한다.
 
 
-def render_case_file() -> None:
-    """수사 기록 — 용의자 / 단서 / 탐정 노트를 탭으로 나눈다.
+PANEL_VIEWS = ("용의자", "단서", "탐정 노트")
 
-    세 블록을 다 펼쳐 두면 한눈에 보기는 좋지만 세로로 길어져 오갈 때 스크롤이
-    생긴다. 탭이면 클릭 한 번으로 바로 그 면이 나온다.
+
+def render_case_file() -> None:
+    """수사 기록 — 용의자 / 단서 / 탐정 노트를 한 면씩 보여준다.
+
+    st.tabs는 다시 그릴 때마다 첫 탭으로 돌아가고, 어느 면을 볼지 코드에서
+    정할 수도 없다. 단서를 찾은 순간 단서 면으로 데려가려면 선택 상태를
+    직접 들고 있어야 해서 segmented_control로 바꿨다.
     """
     state = st.session_state.state
-    suspects_tab, clues_tab, notes_tab = st.tabs(
-        ["용의자", f"단서 {len(state['clues_found'])} / {len(gs.CLUES)}", "탐정 노트"]
+    labels = {
+        "용의자": "용의자",
+        "단서": f"단서 {len(state['clues_found'])} / {len(gs.CLUES)}",
+        "탐정 노트": "탐정 노트",
+    }
+
+    st.segmented_control(
+        "수사 기록",
+        PANEL_VIEWS,
+        key="panel_view",
+        format_func=lambda value: labels[value],
+        label_visibility="collapsed",
+        width="stretch",
     )
 
-    with suspects_tab:
+    view = st.session_state.get("panel_view") or "용의자"
+    if view == "용의자":
         _render_suspects(state)
-    with clues_tab:
+    elif view == "단서":
         _render_clues(state)
-    with notes_tab:
+    else:
         _render_notes()
 
 
@@ -489,6 +521,7 @@ def _render_notes() -> None:
                     "장소": entry["location"],
                     "행동": entry["action"],
                     "단서": entry["found"] or "",
+                    "비고": entry.get("note", ""),
                 }
                 for entry in st.session_state.log
             ],
@@ -496,9 +529,12 @@ def _render_notes() -> None:
             width="stretch",
             column_config={
                 "턴": st.column_config.TextColumn(width=40),
-                "장소": st.column_config.TextColumn(width=64),
-                "행동": st.column_config.TextColumn(width=52),
-                "단서": st.column_config.TextColumn(width=150),
+                "장소": st.column_config.TextColumn(width=60),
+                "행동": st.column_config.TextColumn(width=50),
+                "단서": st.column_config.TextColumn(width=140),
+                "비고": st.column_config.TextColumn(
+                    width=170, help="의심도·신뢰도가 움직인 이유"
+                ),
             },
         )
     else:
@@ -685,6 +721,11 @@ def render_play() -> None:
     if gm is None:
         return
 
+    # 단서를 찾은 직후라면 수사 기록을 단서 면으로 옮긴다.
+    # 위젯이 그려지기 전인 지금이 대입할 수 있는 유일한 시점이다.
+    if st.session_state.pop("jump_to_clues", False):
+        st.session_state.panel_view = "단서"
+
     # 화면이 넓으면 좌우 2단, 좁아지면 Streamlit이 알아서 위아래로 쌓는다.
     # 수사 기록을 스크롤 없이 옆에서 보게 하려는 배치다.
     stage, panel = st.columns([3, 2], gap="medium")
@@ -723,6 +764,8 @@ def render_play() -> None:
 
         # 효과음이 붙을 자리. 클릭 시점에 여기에 바로 그려서 즉시 재생한다.
         sound_slot = st.empty()
+        # 단서 발견음은 스트리밍이 끝난 회차에서 울린다(조사음과 겹치지 않게).
+        render_clue_chime()
 
         # 이 자리에 다음 턴 나레이션이 스트리밍으로 덮어쓰인다.
         with st.container(key="narration"):
@@ -776,7 +819,9 @@ def render_play() -> None:
                         # 순서가 중요하다: 소리를 먼저 붙여 즉시 재생시키고,
                         # 지난 턴 흔적(단서·선택지)을 걷어낸 뒤 스트리밍을 시작한다.
                         # 소리 선택은 state가 바뀌기 전에 해야 한다.
-                        play_sound(sound_slot, sound_for_choice(state, choice))
+                        play_sound(
+                            sound_slot, ACTION_SOUNDS.get(choice["action"], "")
+                        )
                         clue_slot.empty()
                         choice_slot.empty()
                         narration_slot.markdown(":gray[…]")
@@ -894,6 +939,7 @@ if "state" not in st.session_state:
 
 # 위젯 키의 초기값은 위젯이 그려지기 전에 딱 한 번만 넣는다.
 st.session_state.setdefault("sound_on", True)
+st.session_state.setdefault("panel_view", "용의자")
 
 inject_css()
 

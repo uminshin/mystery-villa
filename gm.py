@@ -86,8 +86,21 @@ RESPONSE_SCHEMA: dict[str, Any] = {
             "required": ["A", "B", "C"],
             "additionalProperties": False,
         },
+        "change_note": {
+            "type": "string",
+            "description": (
+                "수치가 움직인 이유를 25자 이내로. 무엇을 보고/듣고 그렇게 됐는지. "
+                "움직인 값이 없으면 빈 문자열."
+            ),
+        },
     },
-    "required": ["narration", "choices", "suspicion_delta", "trust_delta"],
+    "required": [
+        "narration",
+        "choices",
+        "suspicion_delta",
+        "trust_delta",
+        "change_note",
+    ],
     "additionalProperties": False,
 }
 
@@ -205,6 +218,10 @@ def build_system_prompt() -> str:
   확신이 서지 않으면 "둘러본다 / 말을 걸어 본다"처럼 일반적인 문구를 써라.
 - 피해자는 이름 대신 "피해자" 또는 "별장 주인"으로 부른다.
 - suspicion_delta / trust_delta는 -15~15 정수. 근거가 없으면 0을 넣어라.
+- change_note: 수치가 왜 움직였는지 25자 이내로 적어라. 플레이어가 나중에
+  "이 의심은 무엇 때문이었나"를 되짚을 수 있어야 한다.
+  예) "알리바이 시각이 어긋남", "질문을 회피함", "다툰 사실을 인정함"
+  움직인 값이 없으면 빈 문자열을 넣어라. 진범을 지목하는 표현은 쓰지 마라.
 - 아직 발견되지 않은 단서가 어느 장소에 있는지 당신은 알고 있지만, 나레이션이나
   선택지 문구로 그 위치를 암시하지 마라. "정원 쪽이 신경 쓰인다" 같은 유도는 금지다.
   플레이어가 어디를 뒤질지는 스스로 판단해야 한다. 이동 선택지는 단서 유무와
