@@ -38,6 +38,9 @@ OPENING_PROMPT = (
 # 배경 대비 11.2:1로 WCAG AA를 크게 넘긴다.
 HIGHLIGHT = "#f2c14e"
 
+# 사건 식별자. 2화가 붙으면 이 키로 결과를 구분한다.
+CASE_ID = "case-1"
+
 # 행동 종류를 한눈에 구분하기 위한 아이콘. 이동만 턴을 소모하지 않는다.
 ACTION_ICONS = {
     "이동": ":material/directions_walk:",
@@ -168,7 +171,7 @@ def render_bgm() -> None:
     브라우저는 사용자 조작 전에는 자동재생을 막는다. 메인 화면의
     '수사를 시작한다'를 누른 뒤에 이 요소가 처음 등장하므로 그 제약을 넘긴다.
     """
-    if not st.session_state.get("sound_on"):
+    if not st.session_state.get("sound_enabled", True):
         return
     data = load_audio("rain.wav")
     if data is None:
@@ -186,13 +189,31 @@ def render_clue_chime() -> None:
     다시 그려지는 회차에서 호출되므로 자연히 나레이션 뒤에 온다.
     키에 턴을 넣어 한 번만 재생된다.
     """
-    if not st.session_state.get("sound_on") or not st.session_state.get("found"):
+    if not st.session_state.get("sound_enabled", True):
+        return
+    if not st.session_state.get("found"):
         return
     data = load_audio("clue.wav")
     if data is None:
         return
     with st.container(key=f"chime-{st.session_state.state['turn']}"):
         st.audio(data, format="audio/wav", autoplay=True)
+
+
+def sound_toggle(where: str, help_text: str | None = None) -> None:
+    """소리 on/off 토글.
+
+    값을 위젯 키에만 두면 안 된다. 토글이 없는 화면(지목·엔딩)으로 넘어가면
+    Streamlit이 그 위젯 상태를 버리고, 다음 회차에 기본값(켜짐)으로 되살아난다.
+    즉 소리를 끄고 지목 화면에 가면 다시 켜졌다. 그래서 실제 값은 위젯이 아닌
+    sound_enabled에 두고, 위젯에는 value로 넣어 준다.
+    """
+    st.session_state.sound_enabled = st.toggle(
+        "소리 켜기",
+        value=st.session_state.get("sound_enabled", True),
+        key=f"sound_toggle_{where}",
+        help=help_text,
+    )
 
 
 def play_sound(slot, name: str) -> None:
@@ -202,12 +223,49 @@ def play_sound(slot, name: str) -> None:
     뒤에야 소리가 났다. 클릭 시점에 넘겨받은 슬롯에 바로 그려서 붙는 즉시
     재생되게 한다.
     """
-    if not st.session_state.get("sound_on"):
+    if not st.session_state.get("sound_enabled", True):
         return
     data = load_audio(name)
     if data is None:
         return
     slot.audio(data, format="audio/wav", autoplay=True)
+
+
+def scroll_to_top_on_phase_change() -> None:
+    """화면이 바뀔 때 맨 위로 올린다.
+
+    Streamlit은 다시 그려도 스크롤 위치를 유지한다. 그래서 브리핑 아래쪽에서
+    '수사를 시작한다'를 누르면 새 화면의 중간부터 보이고, 도입 나레이션을
+    놓친다. 스크롤 API가 없어서 한 줄 스크립트로 처리한다.
+    """
+    phase = st.session_state.phase
+    if st.session_state.get("scrolled_phase") == phase:
+        return
+    st.session_state.scrolled_phase = phase
+    # 한 번만 올리면 소용이 없다. 스크립트가 도는 시점에는 새 화면의 배치가
+    # 끝나지 않았고, Streamlit이 그 뒤에 이전 스크롤 위치를 복원한다.
+    # 그래서 배치가 안정될 때까지 몇 번 더 올린다.
+    st.html(
+        """<script>
+        const target = window.parent || window;
+        const doc = target.document;
+        const toTop = () => {
+            const panes = [
+                doc.querySelector('[data-testid="stMain"]'),
+                doc.scrollingElement,
+                doc.body,
+            ];
+            for (const pane of panes) { if (pane) pane.scrollTop = 0; }
+            target.scrollTo(0, 0);
+        };
+        toTop();
+        target.requestAnimationFrame(toTop);
+        for (const delay of [50, 150, 350, 700]) {
+            target.setTimeout(toTop, delay);
+        }
+        </script>""",
+        unsafe_allow_javascript=True,
+    )
 
 
 def inject_css() -> None:
@@ -332,13 +390,12 @@ def start_new_game() -> None:
     st.session_state.ending = None
     st.session_state.pending_input = None
     st.session_state.log = []
-    # 메모는 위젯 키에 묶여 있어서 여기서 ""를 대입하면
-    # "cannot be modified after the widget is instantiated" 예외가 난다
-    # (리셋 버튼이 노트보다 뒤에 그려지므로 항상 그 상황이다).
-    # 대신 판 번호를 올려 키 자체를 새로 만든다 — 새 위젯이라 값이 비어 있다.
+    # 메모 본체는 위젯이 아닌 이 딕셔너리다. 위젯 키에 직접 대입하면
+    # "cannot be modified after the widget is instantiated" 예외가 나므로,
+    # 판 번호를 올려 위젯 키 자체를 새로 만들고 값은 여기서 비운다.
+    st.session_state.notes = {key: "" for key in gs.SUSPECTS}
     st.session_state.game_id = st.session_state.get("game_id", 0) + 1
-    # sound_on은 위젯 키라서 여기서 건드리지 않는다. 위젯이 이미 그려진 뒤에
-    # 대입하면 Streamlit이 예외를 던지고, 소리 설정은 판을 넘겨 유지되는 편이 낫다.
+    # 소리 설정(sound_enabled)과 평판은 판을 넘겨 유지되므로 건드리지 않는다.
 
 
 def request_gm(player_input: str, narration_slot=None) -> None:
@@ -430,6 +487,29 @@ def take_action(choice: dict[str, str], narration_slot=None) -> None:
 PANEL_VIEWS = ("용의자", "단서", "탐정 노트")
 
 
+def record_case_result(ending: dict) -> None:
+    """지목 결과를 탐정 기록에 남긴다.
+
+    평판은 판을 넘겨 누적되고, 해결 여부는 사건별로 기억한다(홈 화면에서
+    '사건 해결'로 표시하기 위해). 판 초기화(start_new_game)로는 지워지지 않는다.
+    """
+    st.session_state.reputation = st.session_state.get("reputation", 0) + ending[
+        "score"
+    ]["total"]
+    if ending["solved"]:
+        st.session_state.solved = st.session_state.get("solved", 0) + 1
+    results = st.session_state.setdefault("case_results", {})
+    previous = results.get(CASE_ID)
+    # 같은 사건을 여러 번 풀면 가장 좋은 결과를 남긴다.
+    if previous is None or ending["score"]["total"] > previous["score"]:
+        results[CASE_ID] = {
+            "ending": ending["ending"],
+            "title": ending["title"],
+            "score": ending["score"]["total"],
+            "solved": ending["solved"],
+        }
+
+
 def render_case_file() -> None:
     """수사 기록 — 용의자 / 단서 / 탐정 노트를 한 면씩 보여준다.
 
@@ -458,7 +538,16 @@ def render_case_file() -> None:
         _render_suspects(state)
     elif view == "단서":
         _render_clues(state)
-    else:
+
+    # 노트는 다른 면을 보는 동안에도 항상 그린다. 그려지지 않은 회차가 생기면
+    # Streamlit이 그 위젯 상태를 버려서 적어둔 메모가 사라진다. 값을 딕셔너리에
+    # 옮겨 담아도 위젯이 사라졌다 되살아나는 사이에 비는 순간이 있어서,
+    # 아예 계속 존재하게 두고 보이기만 CSS로 감춘다.
+    if view != "탐정 노트":
+        st.html(
+            "<style>.st-key-notes-pane{display:none !important;}</style>",
+        )
+    with st.container(key="notes-pane"):
         _render_notes()
 
 
@@ -494,6 +583,18 @@ def _render_suspects(state: dict) -> None:
             ),
         },
     )
+
+    # 인상착의는 단서를 인물과 잇는 유일한 통로다. 브리핑에서만 보여주고
+    # 게임 중에 감추면 "굽이 얇은 구두"를 누구와도 연결할 수 없다.
+    st.caption("인물 정보")
+    for key, info in gs.SUSPECTS.items():
+        with st.expander(f"{info['name']} · {info['gender']} {info['age']}"):
+            st.markdown(
+                f":gray[관계] {info['relation']}  \n"
+                f":gray[인상착의] {info['appearance']}  \n"
+                f":gray[태도] {info['habit']}  \n"
+                f":gray[알려진 동기] {info['motive']}"
+            )
 
 
 def _render_clues(state: dict) -> None:
@@ -540,10 +641,16 @@ def _render_notes() -> None:
     else:
         st.caption("아직 기록이 없습니다.")
 
+    # 메모를 위젯 키에만 두면 사라진다. 수사 기록을 한 면씩 보여주게 바꾼 뒤로는
+    # 노트 면이 안 그려지는 회차가 생기고, Streamlit은 그 회차에 만들어지지 않은
+    # 위젯의 상태를 버린다(단서를 찾아 단서 면으로 넘어가는 순간이 정확히 그 경우다).
+    # 그래서 값은 위젯이 아닌 세션 딕셔너리에 보관하고, 위젯에는 value로 되돌려준다.
+    notes = st.session_state.notes
     game_id = st.session_state.get("game_id", 0)
     for key, info in gs.SUSPECTS.items():
-        st.text_area(
+        notes[key] = st.text_area(
             info["name"],
+            value=notes.get(key, ""),
             key=f"notes_{game_id}_{key}",
             height=104,
             placeholder=f"{info['short']}의 진술과 모순을 적어두세요.\n예) 23:00 취침 주장",
@@ -603,12 +710,19 @@ def render_start() -> None:
     # 진행에 따라 값이 바뀌지 않는 표라서 마크다운으로 그리고 CSS로 확대한다.
     with st.container(key="people-table"):
         rows = "\n".join(
-            f"| {info['name']} | {info['gender']} | {info['age']} | {info['relation']} |"
+            f"| {info['name']}<br>:gray[{info['gender']} · {info['age']}] "
+            f"| {info['relation']} "
+            f"| {info['appearance']}<br>:gray[{info['habit']}] |"
             for info in gs.SUSPECTS.values()
         )
         st.markdown(
-            "| 인물 | 성별 | 나이 | 피해자와의 관계 |\n"
-            "| --- | --- | --- | --- |\n" + rows
+            "| 인물 | 피해자와의 관계 | 인상착의 · 태도 |\n"
+            "| --- | --- | --- |\n" + rows,
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "인상착의는 단서를 인물과 잇는 실마리입니다. 수사 중에도 "
+            "수사 기록 › 용의자에서 다시 볼 수 있습니다."
         )
 
     st.write("")
@@ -661,6 +775,8 @@ def render_home() -> None:
 
     left, right = st.columns([3, 2], gap="large")
 
+    result = st.session_state.get("case_results", {}).get(CASE_ID)
+
     with left:
         st.markdown("###### 사건 파일")
         with st.container(border=True):
@@ -669,8 +785,22 @@ def render_home() -> None:
                 f"폭풍으로 갇힌 외딴 섬의 별장. "
                 f"용의자 {len(gs.SUSPECTS)}명, 장소 {len(gs.LOCATIONS)}곳, {gs.MAX_TURNS}턴."
             )
+            if result:
+                if result["solved"]:
+                    st.badge(
+                        f"사건 해결 · {result['score']}점",
+                        icon=":material/verified:",
+                        color="green",
+                    )
+                else:
+                    st.badge(
+                        f"{result['title']} · {result['score']}점",
+                        icon=":material/history:",
+                        color="orange",
+                    )
+            label = "다시 수사한다" if result else "사건을 맡는다"
             if st.button(
-                "사건을 맡는다",
+                label,
                 type="primary",
                 icon=":material/play_arrow:",
                 width="stretch",
@@ -683,21 +813,30 @@ def render_home() -> None:
             st.caption("다음 사건은 아직 열리지 않았습니다.")
 
     with right:
+        reputation = st.session_state.get("reputation", 0)
         st.markdown("###### 탐정")
         with st.container(border=True):
-            st.metric("등급", "수련 탐정", border=False)
+            st.metric("등급", gs.rank_for(reputation), border=False)
             st.markdown(
                 f":gray[해결한 사건] {st.session_state.get('solved', 0)}건  \n"
-                f":gray[평판] {st.session_state.get('reputation', 0)}"
+                f":gray[평판] {reputation}"
             )
-            st.caption("사건을 증거로 입증할수록 평판이 오릅니다.")
+            next_rank = next(
+                ((need, name) for need, name in gs.RANKS if need > reputation), None
+            )
+            if next_rank:
+                st.caption(
+                    f"{next_rank[1]}까지 {next_rank[0] - reputation}점 "
+                    ":gray[· 증거로 입증할수록 많이 오릅니다]"
+                )
+            else:
+                st.caption("최고 등급입니다.")
 
         st.markdown("###### 설정")
         with st.container(border=True):
-            st.toggle(
-                "소리 켜기",
-                key="sound_on",
-                help="폭우 보량음과 행동 효과음. 게임 중에도 끌 수 있습니다.",
+            sound_toggle(
+                "home",
+                help_text="폭우 보량음과 행동 효과음. 게임 중에도 끌 수 있습니다.",
             )
 
 
@@ -735,7 +874,7 @@ def render_play() -> None:
 
     with panel:
         # 오른편 위: 설정과 남은 시간. 그 아래 평면도, 그리고 수사 기록.
-        st.toggle("소리 켜기", key="sound_on")
+        sound_toggle("play")
         remaining = state["max_turns"] - state["turn"]
         with st.container(key="turn-low" if remaining <= 3 else "turn-normal"):
             st.metric(
@@ -889,11 +1028,13 @@ def render_accuse() -> None:
             width="stretch",
         ):
             st.session_state.ending = gs.accuse(st.session_state.state, key)
+            record_case_result(st.session_state.ending)
             st.session_state.phase = "ending"
             st.rerun()
 
     if st.button("지목을 포기한다", key="accuse-none", type="tertiary", width="stretch"):
         st.session_state.ending = gs.accuse(st.session_state.state, None)
+        record_case_result(st.session_state.ending)
         st.session_state.phase = "ending"
         st.rerun()
 
@@ -904,6 +1045,21 @@ def render_ending() -> None:
     render_ending_art(ending.get("art"))
     with st.container(key="narration"):
         st.markdown(ending["text"])
+
+    score = ending.get("score")
+    if score:
+        st.write("")
+        st.markdown("###### 평판")
+        with st.container(border=True, width="content"):
+            earned = "  \n".join(
+                f":gray[{label}] {value:+d}" for label, value in score["parts"] if value
+            )
+            st.markdown(
+                (earned + "  \n" if earned else "")
+                + f"**이번 사건 {score['total']}점**  \n"
+                f":gray[누적 평판] {st.session_state.get('reputation', 0)} "
+                f":gray[· {gs.rank_for(st.session_state.get('reputation', 0))}]"
+            )
 
     # 동기는 정답 엔딩에서만 온다. 절마다 그날 밤의 장면을 옆에 붙여서
     # 긴 글이 밋밋해지지 않게 한다(사후 상황이 아니라 사건 당시 장면이다).
@@ -941,10 +1097,11 @@ if "state" not in st.session_state:
     start_new_game()
 
 # 위젯 키의 초기값은 위젯이 그려지기 전에 딱 한 번만 넣는다.
-st.session_state.setdefault("sound_on", True)
+st.session_state.setdefault("sound_enabled", True)
 st.session_state.setdefault("panel_view", "용의자")
 
 inject_css()
+scroll_to_top_on_phase_change()
 
 phase = st.session_state.phase
 

@@ -123,22 +123,20 @@ def rain() -> np.ndarray:
     gust = 1.0 + 0.22 * np.sin(2 * np.pi * 0.06 * time + 0.4)
     gust *= 1.0 + 0.12 * np.sin(2 * np.pi * 0.017 * time)
 
-    # 배 타고 건너온 섬이다. 파도를 아주 낮게 두 번 얹어 위치감을 준다.
-    # 비의 중역을 덮지 않을 만큼만(0.35) 섞는다.
-    swell = waves(seconds, count=2) * 0.35
-
-    mixed = (sheet + mid + body + grains) * gust + swell
+    # 파도를 얹어 봤지만 비의 질감을 흐려서 뺐다. 비는 비만으로 둔다.
+    mixed = (sheet + mid + body + grains) * gust
     return loop_seamlessly(normalize(mixed, LEVELS["rain"]))
 
 
 def door() -> np.ndarray:
-    """이동음. 걸쇠가 열리고 문이 닫히는 소리.
+    """이동음. 문을 열고 나가 다른 문으로 들어가는 소리.
 
     긴 경첩 스윕(0.72초)을 넣었더니 사인파 신음처럼 들려서 걷어냈다.
     합성으로 신뢰할 수 있는 건 '짧은 충격 + 나무 공진'이다.
-    그래서 ① 걸쇠 딸깍 ② 문이 닫히며 나는 나무 울림 두 개만 남겼다.
+    0.85초로는 너무 짧아 '문 두 짝'으로 늘렸다 —
+    걸쇠 → 닫힘 → (사이) → 먼 쪽 걸쇠 → 닫힘. 방을 옮긴 느낌이 난다.
     """
-    seconds = 0.85
+    seconds = 1.75
     count = int(RATE * seconds)
     total = np.zeros(count)
 
@@ -156,45 +154,75 @@ def door() -> np.ndarray:
         )
         return sig * level, n
 
-    # 걸쇠: 짧고 밝은 딸깍
-    latch, n = wood_hit(
-        0.09, [(1180.0, 120.0, 0.5), (640.0, 90.0, 0.35)], 300.0, 0.85
-    )
-    total[:n] += latch
+    def place(signal, at: float):
+        start = int(RATE * at)
+        end = min(count, start + len(signal))
+        total[start:end] += signal[: end - start]
 
-    # 문이 닫히며 판이 울리는 소리. 나무 공진은 저·중역 몇 개로 충분하다.
-    start = int(RATE * 0.30)
-    thud, n = wood_hit(
-        0.45,
-        [(196.0, 26.0, 0.9), (312.0, 34.0, 0.5), (520.0, 52.0, 0.25)],
-        90.0,
-        1.0,
+    # 나가는 문: 걸쇠 딸깍 → 문판이 울리며 닫힘
+    latch, _ = wood_hit(0.09, [(1180.0, 120.0, 0.5), (640.0, 90.0, 0.35)], 300.0, 0.85)
+    place(latch, 0.02)
+    thud, _ = wood_hit(
+        0.45, [(196.0, 26.0, 0.9), (312.0, 34.0, 0.5), (520.0, 52.0, 0.25)], 90.0, 1.0
     )
-    total[start : start + n] += thud
+    place(thud, 0.34)
+
+    # 들어가는 문: 조금 멀리서(작게, 저역 위주) 같은 두 소리가 반복된다
+    latch2, _ = wood_hit(0.09, [(1040.0, 130.0, 0.4), (580.0, 95.0, 0.3)], 300.0, 0.45)
+    place(latch2, 1.00)
+    thud2, _ = wood_hit(
+        0.45, [(178.0, 24.0, 0.9), (286.0, 32.0, 0.4), (470.0, 50.0, 0.18)], 90.0, 0.62
+    )
+    place(thud2, 1.28)
 
     return normalize(total, LEVELS["move"])
 
 
-def waves(seconds: float, count: int) -> np.ndarray:
-    """파도가 절벽을 치는 소리. 비 위에 아주 드물게 얹는다.
+def camera() -> np.ndarray:
+    """조사음. 현장 사진을 찍는 셔터 소리.
 
-    파도는 '느리게 부풀었다 빠지는' 광대역 소음이다. 저역이 두꺼우면
-    비의 중역을 덮어버리므로 대역을 200~2000Hz로 좁혀 둔다.
+    종이 스치는 소리는 '무슨 소리인지 모르겠다'는 반응이 나왔다.
+    탐정이 현장에서 하는 행동 중 소리가 분명한 건 사진 촬영이다.
+    셔터는 ① 미러가 올라가는 딸깍 ② 곧바로 닫히는 딸깍 ③ 필름 감기는 스르륵
+    세 부분으로 되어 있고, 이 구조가 있으면 바로 카메라로 들린다.
     """
-    total = np.zeros(int(RATE * seconds))
-    span = int(RATE * 3.2)
-    positions = np.linspace(0, len(total) - span, count).astype(int)
-    for index, start in enumerate(positions):
-        t = np.arange(span) / RATE
-        # 부딪히고(빠른 상승) 물러나는(느린 하강) 비대칭 포락선
-        rise = np.clip(t / 0.45, 0, 1) ** 1.6
-        fall = np.exp(-np.clip(t - 0.45, 0, None) * 0.85)
-        envelope = rise * fall
-        body = spectral_noise(
-            span / RATE, alpha=0.7, cutoff_hz=2000, highpass_hz=200
-        )[:span]
-        total[start : start + span] += body * envelope * (0.9 if index % 2 else 0.6)
-    return total
+    seconds = 0.95
+    count = int(RATE * seconds)
+    total = np.zeros(count)
+
+    def click(at: float, pitch: float, level: float, decay: float):
+        length = int(RATE * 0.06)
+        t = np.arange(length) / RATE
+        sig = np.sin(2 * np.pi * pitch * t) * np.exp(-t * decay) * 0.6
+        sig += np.sin(2 * np.pi * pitch * 1.7 * t) * np.exp(-t * decay * 1.4) * 0.3
+        sig += (
+            spectral_noise(0.06, alpha=0.2, cutoff_hz=9000, highpass_hz=2000)[:length]
+            * np.exp(-t * 380.0)
+            * 1.8
+        )
+        start = int(RATE * at)
+        total[start : start + length] += sig * level
+
+    click(0.00, 2400.0, 1.0, 220.0)   # 미러 업
+    click(0.075, 1900.0, 0.85, 260.0)  # 셔터 닫힘
+
+    # 필름 감기: 톱니가 걸리며 나는 규칙적인 잔음
+    start = int(RATE * 0.24)
+    wind_len = int(RATE * 0.52)
+    t = np.arange(wind_len) / RATE
+    envelope = np.sin(np.pi * np.clip(t / t[-1], 0, 1)) ** 0.8
+    teeth = (np.sin(2 * np.pi * 62.0 * t) > 0.55).astype(float)
+    wind = (
+        spectral_noise(0.52, alpha=0.4, cutoff_hz=6000, highpass_hz=1200)[:wind_len]
+        * envelope
+        * (0.35 + 0.65 * teeth)
+        * 1.1
+    )
+    total[start : start + wind_len] += wind
+
+    return normalize(total, LEVELS["search"])
+
+
 
 
 def tick(duration: float, pitch: float, brightness: float) -> np.ndarray:
@@ -298,7 +326,7 @@ def main() -> None:
     write_wav("rain.wav", rain())
     write_wav("interrogate.wav", metronome())
     write_wav("move.wav", door())
-    write_wav("search.wav", rustle())
+    write_wav("search.wav", camera())
     write_wav("clue.wav", clue_chime())
     print("완료")
 

@@ -28,6 +28,9 @@ SUSPECTS = {
         "gender": "남성",
         "age": "40대",
         "relation": "피해자와 아버지가 같다. 유산 배분을 두고 오래 다퉜다.",
+        # 단서를 인물과 연결하려면 외형·습관이 공개되어 있어야 한다.
+        "appearance": "굽 있는 갈색 구두, 왼손에 인장 반지. 술잔을 오른손으로 든다.",
+        "habit": "말이 앞서고, 불리해지면 목소리가 커진다.",
     },
     "B": {
         "name": "B · 전 비즈니스 파트너",
@@ -36,6 +39,8 @@ SUSPECTS = {
         "gender": "남성",
         "age": "50대",
         "relation": "피해자와 공동으로 사업을 했다. 청산 과정에서 채무가 얽혔다.",
+        "appearance": "밑창 두꺼운 검은 단화, 서류 가방을 늘 들고 다닌다.",
+        "habit": "숫자에는 정확하고, 사람 이름은 흐린다. 만년필을 손에서 놓지 않는다.",
     },
     "C": {
         "name": "C · 개인 비서",
@@ -47,6 +52,8 @@ SUSPECTS = {
             "3년간 피해자의 일정과 서류를 관리했다. "
             "별장 살림과 창고 정리도 그녀 몫이었다."
         ),
+        "appearance": "굽이 얇은 검은 구두, 회색 카디건. 별장 열쇠를 전부 가지고 있다.",
+        "habit": "묻기 전에 먼저 정리해서 답한다. 필체가 반듯하다.",
     },
 }
 
@@ -97,7 +104,8 @@ CLUES: dict[str, dict[str, Any]] = {
         "name": "젖은 흙에 남은 발자국",
         "detail": (
             "비가 그친 뒤에 찍혔다. 별장 안쪽에서 창고 쪽으로 갔다가 되돌아온 방향이다. "
-            "이 시각 이후에 밖에 나간 사람이 있다는 뜻이다."
+            "자국이 좁고 깊다 — 굽이 얇은 신발이다. "
+            "무거운 것을 들고 돌아온 듯 돌아오는 쪽 자국이 더 깊다."
         ),
         "points_to": "C",
     },
@@ -121,7 +129,8 @@ CLUES: dict[str, dict[str, Any]] = {
         "name": "선반에 남은 사각형 빈 자리",
         "detail": (
             "먼지 위에 무거운 것이 놓였던 사각 자국이 선명하고, 대리석 가루가 남아 있다. "
-            "그 자리의 물건만 사라졌다. 창고 정리를 맡은 사람은 한 명뿐이다."
+            "그 자리의 물건만 사라졌다. 자국의 먼지 두께로 보아 며칠 전이 아니라 어젯밤이다. "
+            "창고 문에는 자물쇠가 걸려 있었다 — 열쇠를 가진 사람은 한 명뿐이다."
         ),
         "points_to": "C",
     },
@@ -382,6 +391,58 @@ CULPRIT_STORY_SECTIONS = [
 ]
 
 
+# 평판 점수. "맞췄나"가 아니라 "얼마나 증명했나"를 재는 것이 목표다.
+# 대충 찍어서 맞춘 판과 물증으로 몰아붙인 판이 같은 점수가 되면 안 된다.
+REPUTATION_BASE = {"TRUE": 50, "INSUFFICIENT": 20, "WRONG": 5, "COLD_CASE": 0}
+REPUTATION_PER_CULPRIT_CLUE = 8  # 진범을 가리키는 단서 1개당
+REPUTATION_ALL_CLUES = 6  # 단서를 전부 찾았을 때
+REPUTATION_PER_SPARE_TURN = 2  # 남긴 턴 1개당
+REPUTATION_SPEED_CAP = 16  # 속도 가산 상한
+
+RANKS = [
+    (0, "수련 탐정"),
+    (60, "사설 탐정"),
+    (150, "이름이 알려진 탐정"),
+    (280, "명탐정"),
+]
+
+
+def score_case(state: dict[str, Any], ending: str) -> dict[str, Any]:
+    """이번 판의 평판 점수를 계산한다. 항목을 나눠 돌려줘서 화면에 근거를 보여준다."""
+    culprit_found = len(culprit_clues(state))
+    spare_turns = max(0, state["max_turns"] - state["turn"])
+
+    # 속도 가산은 입증에 성공한 판에만 준다. 그러지 않으면 "2턴에 아무 단서 없이
+    # 찍기"가 시간 가산만으로 높은 점수를 받아, 수사하지 않는 쪽이 이득이 된다.
+    speed = (
+        min(REPUTATION_SPEED_CAP, spare_turns * REPUTATION_PER_SPARE_TURN)
+        if ending == "TRUE"
+        else 0
+    )
+    parts = [
+        ("판정", REPUTATION_BASE.get(ending, 0)),
+        ("결정적 단서", culprit_found * REPUTATION_PER_CULPRIT_CLUE),
+        (
+            "단서 전량 확보",
+            REPUTATION_ALL_CLUES if len(state["clues_found"]) == len(CLUES) else 0,
+        ),
+        ("남긴 시간", speed),
+    ]
+    # 틀린 지목에 증거 가산을 주면 엉뚱한 사람을 찍고도 점수를 챙길 수 있다.
+    if ending in ("WRONG", "COLD_CASE"):
+        parts = [(label, value if label == "판정" else 0) for label, value in parts]
+    total = min(100, sum(value for _, value in parts))
+    return {"total": total, "parts": parts}
+
+
+def rank_for(reputation: int) -> str:
+    name = RANKS[0][1]
+    for threshold, label in RANKS:
+        if reputation >= threshold:
+            name = label
+    return name
+
+
 def accuse(state: dict[str, Any], target: Optional[str]) -> dict[str, Any]:
     """지목 결과를 확정한다. target=None이면 지목 포기."""
     found = culprit_clues(state)
@@ -446,6 +507,8 @@ def accuse(state: dict[str, Any], target: Optional[str]) -> dict[str, Any]:
         "text": text,
         "story": story,
         "art": ENDING_ART.get(ending),
+        "score": score_case(state, ending),
+        "solved": ending == "TRUE",
     }
 
 
