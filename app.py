@@ -21,6 +21,10 @@ AUDIO_DIR = Path(__file__).parent / "assets" / "audio"
 # 행동별 효과음. 없는 파일은 조용히 건너뛴다.
 ACTION_SOUNDS = {"이동": "move.wav", "조사": "search.wav", "심문": "interrogate.wav"}
 
+# 배경음(빗소리) 재생 볼륨(0~1). 효과음을 덮지 않도록 낮춰 둔다. 효과음은
+# 별도 <audio>라 이 값의 영향을 받지 않는다. render_bgm의 JS에서 사용한다.
+BGM_VOLUME = 0.28
+
 st.set_page_config(
     page_title="그날 밤, 별장에서",
     page_icon="🕯️",
@@ -185,16 +189,20 @@ def render_bgm() -> None:
         st.audio(data, format="audio/wav", loop=True, autoplay=True)
     # height=0 컴포넌트로 JS만 주입한다. 컴포넌트 iframe은 같은 오리진이라
     # window.parent.document로 앱 본문의 <audio>에 접근할 수 있다.
+    # 배경음은 계속 깔리는 소리라, 짧게 튀는 효과음을 덮지 않게 볼륨을 낮춘다.
+    # (효과음은 별도 <audio>라 이 볼륨의 영향을 받지 않는다.)
     components.html(
         f"""
         <script>
         const enabled = {str(enabled).lower()};
+        const volume = {BGM_VOLUME};
         const doc = window.parent.document;
         const apply = () => {{
             const el = doc.querySelector('.st-key-bgm audio');
             if (!el) return false;
             if (enabled) {{
                 el.muted = false;
+                el.volume = volume;
                 if (el.paused) el.play().catch(() => {{}});
             }} else {{
                 el.pause();
