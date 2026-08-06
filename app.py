@@ -231,19 +231,32 @@ def render_clue_chime() -> None:
         st.audio(data, format="audio/wav", autoplay=True)
 
 
+def _sync_sound_enabled(where: str) -> None:
+    """토글 변경을 rerun 시작 시점(스크립트 본문 실행 전)에 sound_enabled로 반영한다.
+
+    이 콜백이 없으면, 스크립트 맨 위에서 도는 render_bgm()이 토글보다 먼저
+    실행되면서 '한 박자 이전' 값을 읽는다 — 그래서 켜면 멈추고 끄면 나는 것처럼
+    반대로 동작했다. on_change 콜백은 본문 실행 전에 먼저 돌므로 최신 값이 보장된다.
+    """
+    st.session_state.sound_enabled = st.session_state[f"sound_toggle_{where}"]
+
+
 def sound_toggle(where: str, help_text: str | None = None) -> None:
     """배경음(빗소리) on/off 토글. 효과음은 이 토글과 무관하게 항상 난다.
 
     값을 위젯 키에만 두면 안 된다. 토글이 없는 화면(지목·엔딩)으로 넘어가면
     Streamlit이 그 위젯 상태를 버리고, 다음 회차에 기본값(켜짐)으로 되살아난다.
     즉 소리를 끄고 지목 화면에 가면 다시 켜졌다. 그래서 실제 값은 위젯이 아닌
-    sound_enabled에 두고, 위젯에는 value로 넣어 준다.
+    sound_enabled에 두고, 위젯에는 value로 넣어 준다. 변경 즉시 반영은
+    on_change 콜백이 담당한다(위 설명 참고).
     """
     st.session_state.sound_enabled = st.toggle(
         "배경음",
         value=st.session_state.get("sound_enabled", True),
         key=f"sound_toggle_{where}",
         help=help_text,
+        on_change=_sync_sound_enabled,
+        args=(where,),
     )
 
 
