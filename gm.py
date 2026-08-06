@@ -29,7 +29,7 @@ from game_state import (
     undiscovered_clue_at,
 )
 
-MODEL = "claude-opus-5"
+MODEL = "claude-sonnet-5"  # opus-5 대비 비용↓ (출력 $25→$10 인트로). 나레이션 품질은 실플레이로 비교
 MAX_TOKENS = 8000  # thinking + 응답 텍스트 합산 상한
 
 
